@@ -1,0 +1,17 @@
+[package]
+name = "frequency_modulation"
+version = "0.1.0"
+edition = "2021"
+[build]
+rustflags = ["-Z", "threads=8"]
+[dependencies]
+iced = { version = "0.12.1", features = ["canvas","tokio"] }
+plotters = {version = "0.3.6",default_features = false, features = [
+    "chrono",
+    "area_series",
+    "line_series",
+    "point_series",
+] }
+plotters-iced = "0.10.0"
+rustfft = "6.2.0"
+spectrum-analyzer = "1.5.0"
