@@ -81,10 +81,10 @@ impl Application for State {
     }
 }
 // use std::collections::VecDeque;
-const SIZE: usize = 512 << 2;
-const SAMPLE_RATE: usize = 1_000_000;
+const SIZE: usize = 512 << 4;
+const SAMPLE_RATE: usize = (79_500) << 2;
 const SIGNAL_FREQ: f64 = 440_f64;
-const CARRIER_FREQ: f64 = 200_000f64;
+const CARRIER_FREQ: f64 = 79_500_f64;
 use fm_modulator::{FmDeModulator, FmModulator};
 struct MyChart {
     t: f64,
@@ -114,7 +114,8 @@ impl MyChart {
     fn next(&mut self) {
         // 信号の作成
         for i in 0..SIZE {
-            self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32 + (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32);
+            // self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32 + (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32);
+            self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32);
             self.carrier[i] = ((self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).cos() as f32);
             self.t += 1f64 / SAMPLE_RATE as f64;
         }
@@ -122,7 +123,7 @@ impl MyChart {
         let _ = self.modulator.modulate(&self.sig);
         // 復調
         self.demodulator.demodulate(&self.sig);
-        // dbg!(&self.carrier);
+        // dbg!(&self.sig);
         // unreachable!();
     }
 }
