@@ -13,6 +13,7 @@ plotters = {version = "0.3.6",default_features = false, features = [
     "point_series",
 ] }
 plotters-iced = "0.10.0"
+rubato = "0.15.0"
 rustfft = "6.2.0"
 sdr = "0.7.0"
 spectrum-analyzer = "1.5.0"

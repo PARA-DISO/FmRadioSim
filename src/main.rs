@@ -12,6 +12,9 @@ use spectrum_analyzer::scaling::divide_by_N_sqrt;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 mod fm_modulator;
+mod lpf;
+use lpf::Lpf;
+mod composite;
 fn main() {
     State::run(Settings {
         antialiasing: true,
@@ -81,17 +84,21 @@ impl Application for State {
     }
 }
 // use std::collections::VecDeque;
-const SIZE: usize = 512 << 4;
-const SAMPLE_RATE: usize = (79_500) << 2;
+const SIZE: usize = 512;
+const AUDIO_SAMPLE_RATE: usize = 44100;
+const SAMPLE_RATE: usize = 500_000 * 4;
 const SIGNAL_FREQ: f64 = 440_f64;
-const CARRIER_FREQ: f64 = 79_500_f64;
+const CARRIER_FREQ: f64 = 500_000f64;
+
 use fm_modulator::{FmDeModulator, FmModulator};
+use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
     sig: Vec<f32>,
     carrier: Vec<f32>,
     modulator: FmModulator,
     demodulator: FmDeModulator,
+    up_sampler: FastFixedIn<f32>,
 }
 impl MyChart {
     pub fn new() -> Self {
@@ -101,6 +108,14 @@ impl MyChart {
             carrier: vec![0f32; SIZE],
             modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
             demodulator: FmDeModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
+            up_sampler: FastFixedIn::new(
+                SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
+                SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
+                PolynomialDegree::Linear,
+                SIZE,
+                1,
+            )
+            .unwrap(),
         }
     }
 
@@ -115,14 +130,20 @@ impl MyChart {
         // 信号の作成
         for i in 0..SIZE {
             // self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32 + (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32);
-            self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32);
-            self.carrier[i] = ((self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).cos() as f32);
-            self.t += 1f64 / SAMPLE_RATE as f64;
+            self.sig[i] = (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32;
+            // self.carrier[i] = ((self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).cos() as f32);
+            self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
         }
+        // upsample
+        // dbg!(self.up_sampler.output_frames_next());
+        let s = self
+            .up_sampler
+            .process(&[self.sig.as_slice()], None)
+            .unwrap();
         // 変調
-        let _ = self.modulator.modulate(&self.sig);
+        let modulated = self.modulator.modulate(&s[0]);
         // 復調
-        self.demodulator.demodulate(&self.sig);
+        self.demodulator.demodulate(modulated);
         // dbg!(&self.sig);
         // unreachable!();
     }
@@ -155,39 +176,32 @@ impl Chart<Message> for MyChart {
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
-                0 => draw_chart(builder, labels[0], &self.sig),
-                1 => draw_spectrum(builder, labels[1], &self.sig),
-                2 => draw_chart(builder, labels[2], &self.carrier),
-                3 => draw_spectrum(builder, labels[3], &self.carrier),
-                4 => {
+                0 => draw_chart(builder, labels[0], &self.sig, AUDIO_SAMPLE_RATE),
+                1 => draw_spectrum(builder, labels[1], &self.sig, AUDIO_SAMPLE_RATE),
+                2 => {
                     if !modurated_buffer.is_empty() {
-                        draw_chart(builder, labels[4], modurated_buffer)
+                        draw_chart(builder, labels[4], modurated_buffer, SAMPLE_RATE)
                     }
                 }
-                5 => {
-                    if !modurated_buffer.is_empty() {
-                        draw_spectrum(builder, labels[5], (modurated_buffer))
-                    }
-                }
-                6 => {}
-                8 => draw_chart(builder, labels[8], demodulate),
-                9 => {
-                    if !demodulate.is_empty() {
-                        draw_spectrum(builder, labels[9], (demodulate))
-                    }
-                }
+                3 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
+
                 _ => {}
             }
         }
     }
 }
-fn draw_chart<DB: DrawingBackend>(mut chart: ChartBuilder<DB>, label: &str, data: &[f32]) {
+fn draw_chart<DB: DrawingBackend>(
+    mut chart: ChartBuilder<DB>,
+    label: &str,
+    data: &[f32],
+    sample_rate: usize,
+) {
     let mut chart = chart
         .margin(30)
         .caption(label, ("sans-serif", 22))
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..SIZE as f32 / SAMPLE_RATE as f32, -1f32..1f32)
+        .build_cartesian_2d(0f32..data.len() as f32 / sample_rate as f32, -1f32..1f32)
         .unwrap();
 
     chart
@@ -208,7 +222,7 @@ fn draw_chart<DB: DrawingBackend>(mut chart: ChartBuilder<DB>, label: &str, data
             data.iter()
                 // .take(SIZE)
                 .enumerate()
-                .map(|(i, x)| (i as f32 / SAMPLE_RATE as f32, *x)),
+                .map(|(i, x)| (i as f32 / sample_rate as f32, *x)),
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
@@ -217,10 +231,15 @@ fn draw_chart<DB: DrawingBackend>(mut chart: ChartBuilder<DB>, label: &str, data
         .unwrap();
 }
 
-fn draw_spectrum<DB: DrawingBackend>(mut chart: ChartBuilder<DB>, label: &str, data: &[f32]) {
+fn draw_spectrum<DB: DrawingBackend>(
+    mut chart: ChartBuilder<DB>,
+    label: &str,
+    data: &[f32],
+    sample_rate: usize,
+) {
     let spectrum = samples_fft_to_spectrum(
         data,
-        SAMPLE_RATE as u32,
+        sample_rate as u32,
         FrequencyLimit::All,
         Some(&divide_by_N_sqrt),
     )
@@ -233,7 +252,7 @@ fn draw_spectrum<DB: DrawingBackend>(mut chart: ChartBuilder<DB>, label: &str, d
         )
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..SAMPLE_RATE as f32 / 2f32, -1f32..3f32)
+        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, -1f32..3f32)
         .unwrap();
 
     chart
