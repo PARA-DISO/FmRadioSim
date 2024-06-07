@@ -8,12 +8,13 @@ use iced::{
 use plotters::{coord::Shift, prelude::*};
 use plotters_backend::DrawingBackend;
 use plotters_iced::{plotters_backend, Chart, ChartWidget, DrawingArea};
-use spectrum_analyzer::scaling::divide_by_N_sqrt;
+use spectrum_analyzer::scaling::{divide_by_N_sqrt, scale_20_times_log10, scale_to_zero_to_one};
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
+mod filter;
 mod fm_modulator;
-mod lpf;
-use lpf::Lpf;
+use filter::Lpf;
+
 mod composite;
 fn main() {
     State::run(Settings {
@@ -91,31 +92,54 @@ const SIGNAL_FREQ: f64 = 440_f64;
 const CARRIER_FREQ: f64 = 500_000f64;
 
 use fm_modulator::{FmDeModulator, FmModulator};
+
+use composite::{CompositeSignal, RestoredSignal};
 use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
+    lr: [Vec<f32>; 2],
     sig: Vec<f32>,
     carrier: Vec<f32>,
     modulator: FmModulator,
     demodulator: FmDeModulator,
+    composite: CompositeSignal,
+    restor: RestoredSignal,
     up_sampler: FastFixedIn<f32>,
+    continue_flag: bool,
 }
 impl MyChart {
     pub fn new() -> Self {
-        Self {
-            t: 0.0,
-            sig: vec![0f32; SIZE],
-            carrier: vec![0f32; SIZE],
-            modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
-            demodulator: FmDeModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
-            up_sampler: FastFixedIn::new(
+      // let composite = CompositeSignal::new(AUDIO_SAMPLE_RATE as f32, SIZE);
+      // let up_sampler =  FastFixedIn::new(
+      //           SAMPLE_RATE as f64 / composite.sample_rate() as f64,
+      //           SAMPLE_RATE as f64 / composite.sample_rate() as f64,
+      //           PolynomialDegree::Linear,
+      //           SIZE,
+      //           1,
+      //       )
+      //       .unwrap();
+        let composite = CompositeSignal::new(SAMPLE_RATE as f32, SIZE);
+      let up_sampler =  FastFixedIn::new(
                 SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
                 SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
                 PolynomialDegree::Linear,
                 SIZE,
                 1,
             )
-            .unwrap(),
+            .unwrap();
+      let restor = RestoredSignal::new(SAMPLE_RATE as f32);
+        Self {
+            t: 0.0,
+            sig: vec![0f32; SIZE],
+            lr: [vec![0.; SIZE], vec![0.; SIZE]],
+            carrier: vec![0f32; SIZE],
+            modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
+            demodulator: FmDeModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
+            composite,
+            restor,
+            up_sampler,
+            
+            continue_flag: true,
         }
     }
 
@@ -127,25 +151,42 @@ impl MyChart {
         chart.into()
     }
     fn next(&mut self) {
-        // 信号の作成
-        for i in 0..SIZE {
-            // self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32 + (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32);
-            self.sig[i] = (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32;
-            // self.carrier[i] = ((self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).cos() as f32);
-            self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
+        if self.continue_flag {
+            // 信号の作成
+            for i in 0..SIZE {
+                // self.sig[i] = ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32 + (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32);
+                // self.sig[i] = (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32;
+                // self.carrier[i] = ((self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).cos() as f32);
+
+                self.lr[0][i] = (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() as f32;
+                self.lr[1][i] =
+                    (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.).sin() as f32;
+                self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
+            }
+            // upsample
+            // dbg!(self.up_sampler.output_frames_next());
+            
+             let l = self
+                .up_sampler
+                .process(&[&self.lr[0]], None)
+                .unwrap();
+            let r = self
+              .up_sampler
+              .process(&[&self.lr[1]], None)
+              .unwrap();
+            self.composite.process(&l[0],&r[0]);
+           
+            // 変調
+            let modulated = self.modulator.modulate(self.composite.get_buffer());
+            // 復調
+            self.demodulator.demodulate(modulated);
+            // コンポジット
+            self.restor.process(self.demodulator.get_buffer());
+            
+            // dbg!(&self.sig);
+            // unreachable!();
+            // self.continue_flag = false;
         }
-        // upsample
-        // dbg!(self.up_sampler.output_frames_next());
-        let s = self
-            .up_sampler
-            .process(&[self.sig.as_slice()], None)
-            .unwrap();
-        // 変調
-        let modulated = self.modulator.modulate(&s[0]);
-        // 復調
-        self.demodulator.demodulate(modulated);
-        // dbg!(&self.sig);
-        // unreachable!();
     }
 }
 use rustfft::num_complex::ComplexFloat;
@@ -157,34 +198,119 @@ impl Chart<Message> for MyChart {
     fn draw_chart<DB: DrawingBackend>(&self, _state: &Self::State, root: DrawingArea<DB, Shift>) {
         // let  serufu = unsafe {(self as *const Self).cast_mut().as_mut().unwrap()};
         let children = root.split_evenly((3, 4));
+        // let labels: [&str; 12] = [
+        //     "input",
+        //     "input spectrum",
+        //     "carrier",
+        //     "carrier spectrum",
+        //     "modulated",
+        //     "modulated spectrum",
+        //     "lpf",
+        //     "",
+        //     "demodulate",
+        //     "demodulated spectrum",
+        //     "",
+        //     "",
+        // ];
         let labels: [&str; 12] = [
-            "input",
-            "input spectrum",
-            "carrier",
-            "carrier spectrum",
-            "modulated",
-            "modulated spectrum",
-            "lpf",
+            "L",
+            "R",
+            "L+R",
+            "L-R",
+            "Composite",
+            "Decomposite L",
+            "Decomposite R",
+            "FM Modulated",
+            "FM Demodulated",
             "",
             "demodulate",
             "demodulated spectrum",
-            "",
-            "",
         ];
         let modurated_buffer = self.modulator.get_buffer();
         let demodulate = self.demodulator.get_buffer();
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
-                0 => draw_chart(builder, labels[0], &self.sig, AUDIO_SAMPLE_RATE),
-                1 => draw_spectrum(builder, labels[1], &self.sig, AUDIO_SAMPLE_RATE),
-                2 => {
-                    if !modurated_buffer.is_empty() {
-                        draw_chart(builder, labels[4], modurated_buffer, SAMPLE_RATE)
-                    }
-                }
-                3 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
-
+                // 0 => draw_chart(builder, labels[0], &self.sig, AUDIO_SAMPLE_RATE),
+                // 1 => draw_spectrum(builder, labels[1], &self.sig, AUDIO_SAMPLE_RATE),
+                // 2 => {
+                //     if !modurated_buffer.is_empty() {
+                //         draw_chart(builder, labels[4], modurated_buffer, SAMPLE_RATE)
+                //     }
+                // }
+                // 3 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
+                0 => draw_chart(builder, labels[0], &self.lr[0], AUDIO_SAMPLE_RATE),
+                1 => draw_chart(builder, labels[1], &self.lr[1], AUDIO_SAMPLE_RATE),
+                2 => draw_chart(
+                    builder,
+                    labels[2],
+                    &(self.lr[0])
+                        .iter()
+                        .zip((self.lr[1]).iter())
+                        .map(|(&l, &r)| l + r)
+                        .collect::<Vec<f32>>(),
+                    AUDIO_SAMPLE_RATE,
+                ),
+                3 => draw_chart(
+                    builder,
+                    labels[3],
+                    &(self.lr[0])
+                        .iter()
+                        .zip((self.lr[1]).iter())
+                        .map(|(&l, &r)| l - r)
+                        .collect::<Vec<f32>>(),
+                    AUDIO_SAMPLE_RATE,
+                ),
+                4 => draw_chart(
+                    builder,
+                    labels[2],
+                    self.composite.get_buffer(),
+                    self.composite.sample_rate() as usize,
+                ),
+                5 => draw_chart(
+                   builder,
+                    labels[7],
+                    self.modulator.get_buffer(),
+                    SAMPLE_RATE
+                ),
+                6 => draw_chart(
+                   builder,
+                    labels[8],
+                    self.demodulator.get_buffer(),
+                    SAMPLE_RATE
+                ),
+                7 => draw_chart(
+                    builder,
+                    labels[5],
+                    &self.restor.get_buffer()[0],
+                    SAMPLE_RATE,
+                ),
+                8 => draw_chart(
+                    builder,
+                    labels[6],
+                    &self.restor.get_buffer()[1],
+                    SAMPLE_RATE,
+                ),
+                // 7 => {
+                //     if !self.restor.get_buffer()[1].is_empty() {
+                //         draw_spectrum(
+                //             builder,
+                //             "spectrum A",
+                //             &self.restor.get_buffer()[0],
+                //             AUDIO_SAMPLE_RATE,
+                //         );
+                //     }
+                // }
+                // 8 => {
+                //     if !self.restor.get_buffer()[1].is_empty() {
+                //         draw_spectrum(
+                //             builder,
+                //             "spectrum B",
+                //             &self.restor.get_buffer()[1],
+                //             AUDIO_SAMPLE_RATE,
+                //         );
+                //     }
+                // }
                 _ => {}
             }
         }
@@ -201,7 +327,7 @@ fn draw_chart<DB: DrawingBackend>(
         .caption(label, ("sans-serif", 22))
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..data.len() as f32 / sample_rate as f32, -1f32..1f32)
+        .build_cartesian_2d(0f32..data.len() as f32 / sample_rate as f32, -3f32..3f32)
         .unwrap();
 
     chart
@@ -241,7 +367,7 @@ fn draw_spectrum<DB: DrawingBackend>(
         data,
         sample_rate as u32,
         FrequencyLimit::All,
-        Some(&divide_by_N_sqrt),
+        Some(&scale_to_zero_to_one),
     )
     .unwrap();
     let mut chart = chart
@@ -252,12 +378,12 @@ fn draw_spectrum<DB: DrawingBackend>(
         )
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, -1f32..3f32)
+        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
         .unwrap();
 
     chart
         .configure_mesh()
-        .x_labels(3)
+        .x_labels(5)
         .y_labels(3)
         // .y_label_style(
         //     ("sans-serif", 15)

@@ -5,7 +5,7 @@
 use sdr::fir::FIR;
 use std::f64::consts::{PI, TAU};
 pub type SampleType = f32;
-use crate::lpf::Lpf;
+use crate::filter::Lpf;
 use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 pub struct FmModulator {
     integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
@@ -56,7 +56,7 @@ impl FmModulator {
                 signal[i - 1] + signal[i]
             } as f64;
             self.buffer[i] = (TAU * self.carrier_freq * self.t
-                + self.sample_period / 2. * self.integral)
+                + 5. * self.sample_period / 2. * self.integral)
                 .cos() as f32;
             self.t += self.sample_period;
         }
@@ -68,8 +68,8 @@ impl FmModulator {
         self.buffer.as_ref()
     }
 }
-const TAPS: usize = 128;
-const CUT_OFF: f32 = 15_000f32;
+// const TAPS: usize = 128;
+const CUT_OFF: f32 = 70_000f32;
 pub struct FmDeModulator {
     t: f64, // 時刻t
     prev_sig: [f32; 2],
