@@ -49,7 +49,9 @@ impl Lpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
+            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
+                - self.c3 * o1
+                - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
@@ -64,18 +66,26 @@ impl Lpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
+            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
+                - self.c3 * o1
+                - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
             o1 = buffer[i];
         }
     }
-    pub fn process_without_buffer(&mut self, signal: f32, info: FilterInfo) -> (f32, FilterInfo) {
+    pub fn process_without_buffer(
+        &self,
+        signal: f32,
+        info: &mut FilterInfo,
+    ) -> f32 {
         let [in1, in2, out1, out2] = info;
-        let buf =
-            self.c0 * signal + self.c1 * in1 + self.c2 * in2 - self.c3 * out1 - self.c4 * out2;
-        (buf, [signal, in1, out1, buf])
+        let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
+            - self.c3 * *out1
+            - self.c4 * *out2;
+        *info = [signal, *in1, buf, *out1];
+        buf
     }
 }
 
@@ -129,7 +139,9 @@ impl Hpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
+            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
+                - self.c3 * o1
+                - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
@@ -143,18 +155,26 @@ impl Hpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
+            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
+                - self.c3 * o1
+                - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
             o1 = buffer[i];
         }
     }
-    pub fn process_without_buffer(&mut self, signal: f32, info: FilterInfo) -> (f32, FilterInfo) {
+    pub fn process_without_buffer(
+        &mut self,
+        signal: f32,
+        info: &mut FilterInfo,
+    ) -> f32 {
         let [in1, in2, out1, out2] = info;
-        let buf =
-            self.c0 * signal + self.c1 * in1 + self.c2 * in2 - self.c3 * out1 - self.c4 * out2;
-        (buf, [signal, in1, out1, buf])
+        let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
+            - self.c3 * *out1
+            - self.c4 * *out2;
+        *info = [signal, *in1, buf, *out1];
+        buf
     }
 }
 pub struct Bpf {
@@ -174,8 +194,15 @@ impl Bpf {
     //         signal[i] = self.process_without_buffer(signal[i]);
     //     }
     // }
-    // pub fn process_without_buffer(&mut self, signal: f32) -> f32 {
-    //     let buf = self.high_pass.process_without_buffer(signal);
-    //     self.low_pass.process_without_buffer(buf)
-    // }
+    pub fn process_without_buffer(
+        &mut self,
+        signal: f32,
+        filter_info: &mut [FilterInfo; 2],
+    ) -> f32 {
+        let buf = self
+            .high_pass
+            .process_without_buffer(signal, &mut filter_info[0]);
+        self.low_pass
+            .process_without_buffer(buf, &mut filter_info[1])
+    }
 }
