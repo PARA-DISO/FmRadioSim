@@ -24,22 +24,22 @@ impl TransmissionLine {
             //  let n:f32 =self.normal.sample(&mut  self.rng) * self.noise_coeff;
             let n = (<StandardNormal as Distribution<f32>>::sample::<
                 sfmt::ThreadRng,
-            >(&self.normal, &mut self.rng) * 2. -1.)
+            >(&self.normal, &mut self.rng)
+                * 2.
+                - 1.)
                 * self.noise_coeff;
             *x = s + n;
         });
     }
-    pub fn process_to_buf(&mut self,dst: &mut [f32], input : &[f32]) {
-        input
-            .iter().zip(dst.iter_mut())
-            .for_each(|(x,d)| {
-                let s = *x * self.signal_coeff;
-                //  let n:f32 =self.normal.sample(&mut  self.rng) * self.noise_coeff;
-                let n = <StandardNormal as Distribution<f32>>::sample::<
-                    sfmt::ThreadRng,
-                >(&self.normal, &mut self.rng)
-                    * self.noise_coeff;
-                *d = s + n;
-            });
+    pub fn process_to_buf(&mut self, dst: &mut [f32], input: &[f32]) {
+        input.iter().zip(dst.iter_mut()).for_each(|(x, d)| {
+            let s = *x * self.signal_coeff;
+            //  let n:f32 =self.normal.sample(&mut  self.rng) * self.noise_coeff;
+            let n = <StandardNormal as Distribution<f32>>::sample::<
+                sfmt::ThreadRng,
+            >(&self.normal, &mut self.rng)
+                * self.noise_coeff;
+            *d = s + n;
+        });
     }
 }

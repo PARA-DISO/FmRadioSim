@@ -6,11 +6,6 @@ pub struct Lpf {
     c2: f32,
     c3: f32,
     c4: f32,
-    // buffer
-    in1: f32,
-    in2: f32,
-    out1: f32,
-    out2: f32,
 }
 impl Lpf {
     pub const Q: f32 = FRAC_1_SQRT_2;
@@ -29,18 +24,8 @@ impl Lpf {
             c2: b2 / a0,
             c3: a1 / a0,
             c4: a2 / a0,
-            // buffer
-            in1: 0.,
-            in2: 0.,
-            out1: 0.,
-            out2: 0.,
+
         }
-    }
-    pub fn reset(&mut self) {
-        self.in1 = 0.;
-        self.in2 = 0.;
-        self.out1 = 0.;
-        self.out2 = 0.;
     }
     pub fn process(&self, signal: &mut [f32]) {
         let mut i1 = 0.;
@@ -95,11 +80,6 @@ pub struct Hpf {
     c2: f32,
     c3: f32,
     c4: f32,
-    // buffer
-    in1: f32,
-    in2: f32,
-    out1: f32,
-    out2: f32,
 }
 
 impl Hpf {
@@ -119,18 +99,7 @@ impl Hpf {
             c2: b2 / a0,
             c3: a1 / a0,
             c4: a2 / a0,
-            // buffer
-            in1: 0.,
-            in2: 0.,
-            out1: 0.,
-            out2: 0.,
         }
-    }
-    pub fn reset(&mut self) {
-        self.in1 = 0.;
-        self.in2 = 0.;
-        self.out1 = 0.;
-        self.out2 = 0.;
     }
     pub fn process(&self, signal: &mut [f32]) {
         let mut i1 = 0.;

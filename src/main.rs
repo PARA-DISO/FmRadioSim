@@ -97,7 +97,7 @@ const SAMPLE_RATE: usize = 1_000_000 * 4;
 const SIGNAL_FREQ: f64 = 440_f64;
 const CARRIER_FREQ: f64 = 1_000_000f64;
 const CUT_OFF: f64 = 200_000.;
-const NOISE: f32  = -INFINITY;
+const NOISE: f32 = -INFINITY;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
@@ -127,7 +127,7 @@ impl MyChart {
         )
         .unwrap();
         let buffer_size = dbg!(up_sampler.input_frames_next());
-        let composite = CompositeSignal::new(SAMPLE_RATE as f32, buffer_size);
+        let composite = CompositeSignal::new(SAMPLE_RATE as f32);
 
         let restor = RestoredSignal::new(SAMPLE_RATE as f32);
         Self {
@@ -136,11 +136,17 @@ impl MyChart {
             lr: [vec![0.; buffer_size], vec![0.; buffer_size]],
             carrier: Vec::new(), //vec![0f32; SIZE],
             modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
-            demodulator: FmDeModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64,CARRIER_FREQ + CUT_OFF),
+            demodulator: FmDeModulator::from(
+                CARRIER_FREQ,
+                SAMPLE_RATE as f64,
+                CARRIER_FREQ + CUT_OFF,
+            ),
             composite,
             restor,
             up_sampler,
-            transmission_line: transmission_line::TransmissionLine::from_snr(NOISE),
+            transmission_line: transmission_line::TransmissionLine::from_snr(
+                NOISE,
+            ),
             continue_flag: true,
         }
     }
@@ -174,7 +180,8 @@ impl MyChart {
             // 変調
             let modulated =
                 self.modulator.modulate(self.composite.get_buffer());
-            self.transmission_line.process_to_buf(&mut self.sig, &modulated);
+            self.transmission_line
+                .process_to_buf(&mut self.sig, modulated);
             // 復調
             self.demodulator.demodulate(&self.sig);
             // コンポジット
@@ -287,8 +294,19 @@ impl Chart<Message> for MyChart {
                         );
                     }
                 }
-                6 => draw_chart(builder, "transmission line", &self.sig, SAMPLE_RATE),
-                7 => draw_spectrum(builder, "transmission spectrum", &self.sig, SAMPLE_RATE,FrequencyLimit::All,),
+                6 => draw_chart(
+                    builder,
+                    "transmission line",
+                    &self.sig,
+                    SAMPLE_RATE,
+                ),
+                7 => draw_spectrum(
+                    builder,
+                    "transmission spectrum",
+                    &self.sig,
+                    SAMPLE_RATE,
+                    FrequencyLimit::All,
+                ),
                 8 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
                 9 => {
                     if !demodulate.is_empty() {
@@ -296,7 +314,7 @@ impl Chart<Message> for MyChart {
                             builder,
                             labels[9],
                             demodulate,
-                            SAMPLE_RATE as usize,
+                            SAMPLE_RATE,
                             /*FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)*/
                             FrequencyLimit::All,
                         );

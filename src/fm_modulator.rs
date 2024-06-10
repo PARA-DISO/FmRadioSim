@@ -1,7 +1,6 @@
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::{TAU};
 pub type SampleType = f32;
 use crate::filter::{FilterInfo, Lpf};
-use rubato::{FastFixedIn, PolynomialDegree, Resampler};
 pub struct FmModulator {
     integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     t: f64,        // 時刻t
@@ -9,10 +8,8 @@ pub struct FmModulator {
     sample_rate: f64,
     sample_period: f64,
     carrier_freq: f64,
-    carrier_period: f64, // キャリア周期(1/f_c)
     buffer: Vec<SampleType>,
     modulation_index: f64,
-    up_sampler: Option<FastFixedIn<f32>>,
 }
 impl FmModulator {
     pub fn new() -> Self {
@@ -24,9 +21,7 @@ impl FmModulator {
             sample_rate: (79_500_000f64 + 500_000f64) * 2.,
             sample_period: 1. / 79_500_000f64 * 3.,
             carrier_freq: 79_500_000f64,
-            carrier_period: 1. / 79_500_000.,
             buffer: Vec::new(),
-            up_sampler: None,
         }
     }
     pub fn from(f: f64, sample_rate: f64) -> Self {
@@ -38,22 +33,17 @@ impl FmModulator {
             sample_rate,
             sample_period: 1. / sample_rate,
             carrier_freq: f,
-            carrier_period: 1. / f,
             buffer: Vec::new(),
-            up_sampler: None,
         }
     }
-    pub fn modulate(&mut self, signal: &[f32]) -> &[f32] {
-        if self.buffer.len() != signal.len() {
-            self.buffer = vec![0f32; signal.len()];
-        }
+    pub fn modulate_to_buffer(&mut self, signal: &[f32], buffer: &mut [f32]) {
         for i in 0..signal.len() {
             self.integral += if i == 0 {
                 self.prev_sig + signal[i]
             } else {
                 signal[i - 1] + signal[i]
             } as f64;
-            self.buffer[i] = (self.t
+            buffer[i] = (self.t
                 + self.modulation_index * self.sample_period / 2.
                     * self.integral)
                 .cos() as f32;
@@ -62,6 +52,15 @@ impl FmModulator {
         self.prev_sig = *(signal.last().unwrap());
 
         self.t = self.t.rem_euclid(TAU);
+    }
+    pub fn modulate(&mut self, signal: &[f32]) -> &[f32] {
+        if self.buffer.len() != signal.len() {
+            self.buffer = vec![0f32; signal.len()];
+        }
+        self.modulate_to_buffer(signal, unsafe {
+            let ptr = self.buffer.as_ptr();
+            std::slice::from_raw_parts_mut(ptr.cast_mut(), signal.len())
+        });
         &self.buffer
     }
     pub fn get_buffer(&self) -> &[f32] {
@@ -76,7 +75,6 @@ pub struct FmDeModulator {
     sample_rate: f64,
     sample_period: f64,
     carrier_freq: f64,
-    carrier_period: f64, // キャリア周期(1/f_c)
     buffer: [Vec<f32>; 2],
     diff_buffer: [Vec<f32>; 2],
     sig_buffer: Vec<f32>,
@@ -92,13 +90,20 @@ impl FmDeModulator {
             sample_rate: 79_500_000f64 * 3.,
             sample_period: 1. / 79_500_000f64 * 3.,
             carrier_freq: 79_500_000f64,
-            carrier_period: 1. / 79_500_000.,
             buffer: [Vec::new(), Vec::new()],
             diff_buffer: [Vec::new(), Vec::new()],
             sig_buffer: Vec::new(),
             result_filter: Lpf::new(79_500_000. * 3., CUT_OFF, Lpf::Q),
-            input_filter: Lpf::new(79_500_000. * 3. as f32, (79_500_000 + 500_000) as f32, Lpf::Q),
-            filter_info: [FilterInfo::default(),FilterInfo::default(), FilterInfo::default()],
+            input_filter: Lpf::new(
+                79_500_000. * 3.,
+                (79_500_000 + 500_000) as f32,
+                Lpf::Q,
+            ),
+            filter_info: [
+                FilterInfo::default(),
+                FilterInfo::default(),
+                FilterInfo::default(),
+            ],
         }
     }
     pub fn from(f: f64, sample_rate: f64, input_cut: f64) -> Self {
@@ -108,14 +113,45 @@ impl FmDeModulator {
             sample_rate,
             sample_period: 1. / sample_rate,
             carrier_freq: f,
-            carrier_period: 1. / f,
             buffer: [Vec::new(), Vec::new()],
             diff_buffer: [Vec::new(), Vec::new()],
             sig_buffer: Vec::new(),
             result_filter: Lpf::new(sample_rate as f32, CUT_OFF, Lpf::Q),
-            input_filter: Lpf::new(sample_rate as f32, input_cut as f32, Lpf::Q),
-            filter_info: [FilterInfo::default(),FilterInfo::default(), FilterInfo::default()],
+            input_filter: Lpf::new(
+                sample_rate as f32,
+                input_cut as f32,
+                Lpf::Q,
+            ),
+            filter_info: [
+                FilterInfo::default(),
+                FilterInfo::default(),
+                FilterInfo::default(),
+            ],
         }
+    }
+    pub fn demodulate_to_buffer(&mut self, signal: &[f32], buffer: &mut [f32]) {
+        for i in 0..signal.len() {
+            let s = self
+                .input_filter
+                .process_without_buffer(signal[i], &mut self.filter_info[0]);
+            // 複素変換
+            let re = self.result_filter.process_without_buffer(
+                -((s as f64) * (self.t).sin()) as f32,
+                &mut self.filter_info[1],
+            );
+            let im = self.result_filter.process_without_buffer(
+                ((s as f64) * (self.t).cos()) as f32,
+                &mut self.filter_info[2],
+            );
+            // 微分
+            let (d_re, d_im) = self.differential(re, im);
+            // たすき掛け
+            let a = d_re * im;
+            let b = d_im * re;
+            buffer[i] = a - b;
+            self.t += self.sample_period * TAU * self.carrier_freq;
+        }
+        self.t = self.t.rem_euclid(TAU);
     }
     pub fn demodulate(&mut self, signal: &[f32]) {
         if self.buffer[0].len() != signal.len() {
@@ -124,50 +160,22 @@ impl FmDeModulator {
                 [vec![0f32; signal.len()], vec![0f32; signal.len()]];
             self.sig_buffer = vec![0f32; signal.len()];
         }
-        // let mut filter_info = [FilterInfo::default(),FilterInfo::default(), FilterInfo::default()];
-        for i in 0..signal.len() {
-            let s = self.input_filter.process_without_buffer(signal[i],&mut self.filter_info[0]);
-            self.buffer[0][i] = self.result_filter.process_without_buffer(
-                -((s as f64) * (self.t).sin()) as f32,
-                &mut self.filter_info[1],
-            );
-            self.buffer[1][i] = self.result_filter.process_without_buffer(
-                ((s as f64) * (self.t).cos()) as f32,
-                &mut self.filter_info[2],
-            );
-            self.t += self.sample_period * TAU * self.carrier_freq;
-        }
-        // self.low_pass.process(&mut self.buffer[0]);
-        // self.low_pass.process(&mut self.buffer[1]);
-
-        self.differential();
-        // self.differential(v1,v2);
-        for i in 0..signal.len() {
-            let (d_re, d_im) =
-                { (self.diff_buffer[0][i], self.diff_buffer[1][i]) };
-            let (s_re, s_im) = { (self.buffer[0][i], self.buffer[1][i]) };
-            let a = d_re * s_im;
-            let b = d_im * s_re;
-            self.sig_buffer[i] = (a - b);
-        }
-        self.t = self.t.rem_euclid(TAU);
+        self.demodulate_to_buffer(signal, unsafe {
+            let ptr = self.sig_buffer.as_ptr();
+            std::slice::from_raw_parts_mut(ptr.cast_mut(), signal.len())
+        });
     }
-    fn differential(&mut self) {
-        let v1 = &self.buffer[0];
-        let v2 = &self.buffer[1];
-        for i in 0..v1.len() {
-            // 実部
-            self.diff_buffer[0][i] =
-                (-if i == 0 { self.prev_sig[0] } else { v1[i - 1] } + v1[i])
-                    / self.sample_period as f32;
-            // 虚部
-            self.diff_buffer[1][i] =
-                (-if i == 0 { self.prev_sig[1] } else { v2[i - 1] } + v2[i])
-                    / self.sample_period as f32;
-        }
-
-        self.prev_sig[0] = *v1.last().unwrap();
-        self.prev_sig[1] = *v2.last().unwrap();
+    #[inline(always)]
+    fn differential(&mut self, r: f32, i: f32) -> (f32, f32) {
+        let diff = {
+            (
+                (r - self.prev_sig[0]) / self.sample_period as f32,
+                (i - self.prev_sig[1]) / self.sample_period as f32,
+            )
+        };
+        self.prev_sig[0] = r;
+        self.prev_sig[1] = i;
+        diff
     }
     pub fn get_buffer(&self) -> &[f32] {
         self.sig_buffer.as_ref()
