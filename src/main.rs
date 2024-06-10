@@ -1,24 +1,21 @@
 use std::f32::INFINITY;
 
 use iced::time;
-use iced::widget::canvas::path::lyon_path::builder;
+
 use iced::{
     executor,
-    widget::{Column, Container, Text},
-    window, Alignment, Application, Command, Degrees, Element, Font, Length,
-    Point, Rectangle, Renderer, Settings, Subscription, Theme, Vector,
+    widget::{Column, Container, Text}, Alignment, Application, Command, Element, Length, Settings, Subscription, Theme,
 };
 use plotters::{coord::Shift, prelude::*};
-use plotters_backend::DrawingBackend;
-use plotters_iced::{plotters_backend, Chart, ChartWidget, DrawingArea};
+use plotters_iced::{Chart, ChartWidget,};
 use spectrum_analyzer::scaling::{
-    divide_by_N_sqrt, scale_20_times_log10, scale_to_zero_to_one,
+    scale_to_zero_to_one,
 };
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 mod filter;
 mod fm_modulator;
-use filter::Lpf;
+
 mod composite;
 mod transmission_line;
 fn main() {
@@ -101,7 +98,7 @@ const NOISE: f32 = -INFINITY;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
-use rubato::{FastFixedIn, FastFixedOut, PolynomialDegree, Resampler};
+use rubato::{FastFixedOut, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
     lr: [Vec<f32>; 2],

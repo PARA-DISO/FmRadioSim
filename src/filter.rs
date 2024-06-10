@@ -1,4 +1,4 @@
-use std::f32::consts::{FRAC_1_SQRT_2, PI, TAU};
+use std::f32::consts::{FRAC_1_SQRT_2, TAU};
 pub type FilterInfo = [f32; 4];
 pub struct Lpf {
     c0: f32,
