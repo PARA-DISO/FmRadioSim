@@ -22,9 +22,9 @@ impl TransmissionLine {
         buffer.iter_mut().for_each(|x| {
             let s = *x * self.signal_coeff;
             //  let n:f32 =self.normal.sample(&mut  self.rng) * self.noise_coeff;
-            let n = <StandardNormal as Distribution<f32>>::sample::<
+            let n = (<StandardNormal as Distribution<f32>>::sample::<
                 sfmt::ThreadRng,
-            >(&self.normal, &mut self.rng)
+            >(&self.normal, &mut self.rng) * 2. -1.)
                 * self.noise_coeff;
             *x = s + n;
         });

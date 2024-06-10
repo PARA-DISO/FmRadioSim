@@ -128,7 +128,7 @@ impl FmDeModulator {
         for i in 0..signal.len() {
             let s = self.input_filter.process_without_buffer(signal[i],&mut self.filter_info[0]);
             self.buffer[0][i] = self.result_filter.process_without_buffer(
-                ((s as f64) * (self.t).sin()) as f32,
+                -((s as f64) * (self.t).sin()) as f32,
                 &mut self.filter_info[1],
             );
             self.buffer[1][i] = self.result_filter.process_without_buffer(

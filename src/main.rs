@@ -1,3 +1,5 @@
+use std::f32::INFINITY;
+
 use iced::time;
 use iced::widget::canvas::path::lyon_path::builder;
 use iced::{
@@ -95,7 +97,7 @@ const SAMPLE_RATE: usize = 1_000_000 * 4;
 const SIGNAL_FREQ: f64 = 440_f64;
 const CARRIER_FREQ: f64 = 1_000_000f64;
 const CUT_OFF: f64 = 200_000.;
-const NOISE: f32  = -80.0;
+const NOISE: f32  = -INFINITY;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
