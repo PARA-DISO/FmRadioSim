@@ -124,8 +124,8 @@ impl RestoredSignal {
                 &mut self.filter_info[2],
             ); // L-R
 
-            l_buffer[i] = (a + b) / 2.;
-            r_buffer[i] = (a - b) / 2.;
+            l_buffer[i] = (a + b) / 2.; // TODO いつかしっかり正規化
+            r_buffer[i] = (a - b) / 2.; // TODO いつかしっかり正規化
             self.t += 1. / self.sample_rate;
         }
         self.t = self.t.rem_euclid(1.);

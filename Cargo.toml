@@ -2,6 +2,8 @@
 name = "frequency_modulation"
 version = "0.1.0"
 edition = "2021"
+[lib]
+crate-type=["cdylib"]
 [build]
 rustflags = ["-Z", "threads=8"]
 [dependencies]
@@ -19,3 +21,11 @@ rand_distr = "0.4.3"
 rubato = "0.15.0"
 sfmt = "0.7.0"
 spectrum-analyzer = "1.5.0"
+
+# VST
+nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
+simplelog = "0.12.2"
+nih_plug_vizia = { git="https://github.com/robbert-vdh/nih-plug" }
+atomic_float = "1.0.0"
+strum = {version="0.26.2", features=["derive"]}
+strum_macros = "0.26.2"

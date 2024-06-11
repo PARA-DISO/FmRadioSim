@@ -16,7 +16,7 @@ const TITLE_FONT_SIZE: u16 = 22;
 mod filter;
 mod fm_modulator;
 
-mod composite;
+pub mod composite;
 mod transmission_line;
 fn main() {
     State::run(Settings {

@@ -7,6 +7,9 @@ pub struct TransmissionLine {
     normal: rand_distr::StandardNormal,
 }
 impl TransmissionLine {
+    pub fn new() {
+      
+    }
     pub fn from_snr(noise_gain: f32) -> Self {
         let noise_coeff = dbg!(10f32.powf(noise_gain / 20f32));
         let signal_coeff = 1. - noise_coeff;
