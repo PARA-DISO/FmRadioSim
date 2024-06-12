@@ -9,32 +9,50 @@ use std::sync::{
 // mod adpcm;
 // use adpcm::{Decoder, Encoder};
 mod composite;
-mod fm_modulator;
 mod filter;
+mod fm_modulator;
 mod transmission_line;
 use composite::{CompositeSignal, RestoredSignal};
-use fm_modulator::{FmModulator,FmDeModulator};
+use fm_modulator::{FmDeModulator, FmModulator};
 use transmission_line::TransmissionLine;
 // use nih_plug_vizia::ViziaState;
 
 mod utils {
 
-    pub fn downsample_f32(dst: &mut [f32],x: &[f32], factor: f64)  {
+    // pub fn downsample_f32(dst: &mut [f32], x: &[f32], factor: f64) {
+    //     let x_len = x.len() as f64;
+    //     // let mut dst = Vec::with_capacity((x_len / factor + 0.5) as usize);
+    //     let mut i = 0.;
+    //     let mut j = 0;
+    //     let max = x.len() - 1;
+    //     while (i + 0.5) < x_len && j < dst.len() {
+    //         let idx_a = i.floor();
+    //         let idx_b = i.ceil() as usize;
+    //         let p = i - idx_a;
+    //         let q = 1. - p;
+    //         dst[j] = x[(idx_a as usize).min(max)] * q as f32
+    //             + x[idx_b.min(max)] * p as f32;
+    //         i += factor;
+    //         j += 1;
+    //     }
+    // }
+    pub fn downsample_f32(x: &[f32], factor: f64) -> Vec<f32> {
         let x_len = x.len() as f64;
-        // let mut dst = Vec::with_capacity((x_len / factor + 0.5) as usize);
+        let mut dst = Vec::with_capacity((x_len / factor + 0.5) as usize);
         let mut i = 0.;
-        let mut j = 0;
         let max = x.len() - 1;
-        while (i + 0.5) < x_len && j < dst.len() {
+        while (i + 0.5) < x_len {
             let idx_a = i.floor();
             let idx_b = i.ceil() as usize;
             let p = i - idx_a;
             let q = 1. - p;
-            dst[j] = x[(idx_a as usize).min(max)] * q as f32
-                    + x[idx_b.min(max)] * p as f32;
+            dst.push(
+                x[(idx_a as usize).min(max)] * q as f32
+                    + x[idx_b.min(max)] * p as f32,
+            );
             i += factor;
-            j+=1;
         }
+        dst
     }
 }
 const FM_CARRIER_FREQ: usize = 1_000_000;
@@ -54,17 +72,19 @@ struct FmRadio {
     // UpSampler
     up_sampler: Option<FastFixedIn<f32>>,
     // Buffer
-    buffer: [Vec<f32>;3],
+    buffer: [Vec<f32>; 2],
 }
 #[derive(Params)]
 struct Param {
-  pub noise_gain: Arc<RwLock<f32>>,
-  // pub fm_carrier: Arc<RwLock<f32>>,
+    pub noise_gain: Arc<RwLock<f32>>,
+    // pub fm_carrier: Arc<RwLock<f32>>,
 }
 impl Default for Param {
     fn default() -> Self {
-    Self {noise_gain: Arc::new(RwLock::new(-std::f32::INFINITY)),}
-  }
+        Self {
+            noise_gain: Arc::new(RwLock::new(-std::f32::INFINITY)),
+        }
+    }
 }
 impl Default for FmRadio {
     fn default() -> Self {
@@ -72,8 +92,15 @@ impl Default for FmRadio {
             params: Arc::new(Param::default()),
             sample_rate: 1.0,
             // FMシミュレーション
-            fm_modulator: FmModulator::from(FM_CARRIER_FREQ as f64,UPPER_SAMPLE_RATE as f64 ),
-            fm_demodulator: FmDeModulator::from(FM_CARRIER_FREQ as f64,UPPER_SAMPLE_RATE as f64,(UPPER_SAMPLE_RATE + CUT_OFF) as f64,),
+            fm_modulator: FmModulator::from(
+                FM_CARRIER_FREQ as f64,
+                UPPER_SAMPLE_RATE as f64,
+            ),
+            fm_demodulator: FmDeModulator::from(
+                FM_CARRIER_FREQ as f64,
+                UPPER_SAMPLE_RATE as f64,
+                (UPPER_SAMPLE_RATE + CUT_OFF) as f64,
+            ),
             // 伝送路
             // transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),
             // コンポジット
@@ -81,7 +108,7 @@ impl Default for FmRadio {
             restore: RestoredSignal::new(UPPER_SAMPLE_RATE as f32),
             // UpSampler
             up_sampler: None,
-            buffer: [Vec::new(),Vec::new(),Vec::new(),]
+            buffer: [Vec::new(), Vec::new()],
         }
     }
 }
@@ -160,7 +187,7 @@ impl Plugin for FmRadio {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
-        // self.composite = 
+        // self.composite =
         true
     }
     fn process(
@@ -183,13 +210,16 @@ impl Plugin for FmRadio {
         }
         let buf_size = self.up_sampler.as_ref().unwrap().output_frames_next();
         if self.buffer[0].len() != buf_size {
-          self.buffer[0] = vec![0.;buf_size];
-          self.buffer[1] = vec![0.;buf_size];
+            self.buffer[0] = vec![0.; buf_size];
+            self.buffer[1] = vec![0.; buf_size];
         }
         // // 入力をup sample
-        
+
         let mut buf1 = unsafe {
-            std::slice::from_raw_parts_mut(self.buffer[0].as_ptr().cast_mut(),buf_size)
+            std::slice::from_raw_parts_mut(
+                self.buffer[0].as_ptr().cast_mut(),
+                buf_size,
+            )
         };
         let mut buf2 = unsafe {
             std::slice::from_raw_parts_mut(
@@ -198,27 +228,37 @@ impl Plugin for FmRadio {
             )
         };
         let _ = self.up_sampler.as_mut().unwrap().process_into_buffer(
-          buffer.as_slice(),
-          &mut [&mut buf1,&mut buf2],
-           None
+            buffer.as_slice(),
+            &mut [&mut buf1, &mut buf2],
+            None,
         );
-        // self.composite.process_to_buffer(
-        //   self.buffer[0].as_slice(),self.buffer[1].as_slice(),buf1
-        // );
-        // self.fm_modulator.modulate_to_buffer(
-        //   self.buffer[0].as_slice(),buf2,
-        // );
-        // self.fm_demodulator.demodulate_to_buffer(
-        //   self.buffer[1].as_slice(),buf1,
-        // );
-        // self.restore.process_to_buffer(
-        //   self.buffer[0].as_slice(),buf1,buf2,
-        // );
+        self.composite.process_to_buffer(
+            self.buffer[0].as_slice(),
+            self.buffer[1].as_slice(),
+            buf1,
+        );
+        self.fm_modulator
+            .modulate_to_buffer(self.buffer[0].as_slice(), buf2);
+        self.fm_demodulator
+            .demodulate_to_buffer(self.buffer[1].as_slice(), buf1);
+        self.restore
+            .process_to_buffer(self.buffer[0].as_slice(), buf1, buf2);
         // // down sample
-        let factor = buffer.samples() as f64 / buf_size as f64;
-        let samples = buffer.as_slice();
-        utils::downsample_f32(samples[0], buf1, factor);
-        utils::downsample_f32(samples[1], buf2, factor);
+        let factor = buf_size as f64 / buffer.samples() as f64;
+        // let samples = buffer.as_slice();
+        buffer
+            .as_slice()
+            .iter_mut()
+            .zip(self.buffer.iter())
+            .for_each(|(s, buf)| {
+                s.iter_mut()
+                    .zip(utils::downsample_f32(buf, factor))
+                    .for_each(|(s, buf)| {
+                        *s = buf;
+                    })
+            });
+        // utils::downsample_f32(samples[0], buf1, factor);
+        // utils::downsample_f32(samples[1], buf2, factor);
         ProcessStatus::Normal
     }
 
@@ -241,13 +281,9 @@ impl Plugin for FmRadio {
 // }
 
 impl Vst3Plugin for FmRadio {
-    const VST3_CLASS_ID: [u8; 16] =[
-      0x71, 0xF4, 0xBF,
-      0xA6, 0x71, 0xBD,
-      0x42, 0xDD, 0xB7,
-      0xB6, 0xF4, 0xF6,
-      0x79, 0xE2, 0x52,
-      0x81
+    const VST3_CLASS_ID: [u8; 16] = [
+        0x71, 0xF4, 0xBF, 0xA6, 0x71, 0xBD, 0x42, 0xDD, 0xB7, 0xB6, 0xF4, 0xF6,
+        0x79, 0xE2, 0x52, 0x81,
     ];
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Tools];

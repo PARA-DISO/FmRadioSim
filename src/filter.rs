@@ -24,7 +24,6 @@ impl Lpf {
             c2: b2 / a0,
             c3: a1 / a0,
             c4: a2 / a0,
-
         }
     }
     pub fn process(&self, signal: &mut [f32]) {

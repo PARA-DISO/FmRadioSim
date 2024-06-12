@@ -1,4 +1,4 @@
-use std::f64::consts::{TAU};
+use std::f64::consts::TAU;
 pub type SampleType = f32;
 use crate::filter::{FilterInfo, Lpf};
 pub struct FmModulator {
