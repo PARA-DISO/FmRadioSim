@@ -99,7 +99,7 @@ impl Default for FmRadio {
             fm_demodulator: FmDeModulator::from(
                 FM_CARRIER_FREQ as f64,
                 UPPER_SAMPLE_RATE as f64,
-                (UPPER_SAMPLE_RATE + CUT_OFF) as f64,
+                (FM_CARRIER_FREQ + CUT_OFF) as f64,
             ),
             // 伝送路
             // transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),

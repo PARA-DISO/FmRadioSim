@@ -4,13 +4,13 @@ use iced::time;
 
 use iced::{
     executor,
-    widget::{Column, Container, Text},
-    Alignment, Application, Command, Element, Length, Settings, Subscription,
-    Theme,
+    widget::{Column, Container, Text}, Alignment, Application, Command, Element, Length, Settings, Subscription, Theme,
 };
 use plotters::{coord::Shift, prelude::*};
-use plotters_iced::{Chart, ChartWidget};
-use spectrum_analyzer::scaling::scale_to_zero_to_one;
+use plotters_iced::{Chart, ChartWidget,};
+use spectrum_analyzer::scaling::{
+    scale_to_zero_to_one,
+};
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 mod filter;
@@ -25,44 +25,7 @@ fn main() {
     })
     .unwrap();
 }
-mod utils {
 
-    // pub fn downsample_f32(dst: &mut [f32], x: &[f32], factor: f64) {
-    //     let x_len = x.len() as f64;
-    //     // let mut dst = Vec::with_capacity((x_len / factor + 0.5) as usize);
-    //     let mut i = 0.;
-    //     let mut j = 0;
-    //     let max = x.len() - 1;
-    //     while (i + 0.5) < x_len && j < dst.len() {
-    //         let idx_a = i.floor();
-    //         let idx_b = i.ceil() as usize;
-    //         let p = i - idx_a;
-    //         let q = 1. - p;
-    //         dst[j] = x[(idx_a as usize).min(max)] * q as f32
-    //             + x[idx_b.min(max)] * p as f32;
-    //         i += factor;
-    //         j += 1;
-    //     }
-    // }
-    pub fn downsample_f32(x: &[f32], factor: f64) -> Vec<f32> {
-        let x_len = x.len() as f64;
-        let mut dst = Vec::with_capacity((x_len / factor + 0.5) as usize);
-        let mut i = 0.;
-        let max = x.len() - 1;
-        while (i + 0.5) < x_len {
-            let idx_a = i.floor();
-            let idx_b = i.ceil() as usize;
-            let p = i - idx_a;
-            let q = 1. - p;
-            dst.push(
-                x[(idx_a as usize).min(max)] * q as f32
-                    + x[idx_b.min(max)] * p as f32,
-            );
-            i += factor;
-        }
-        dst
-    }
-}
 #[derive(Debug)]
 enum Message {
     Tick,
@@ -127,49 +90,49 @@ impl Application for State {
 const SIZE: usize = 512;
 const BUFFER_SIZE: usize = 512 << 4;
 const AUDIO_SAMPLE_RATE: usize = 44100;
-const SAMPLE_RATE: usize = 1_000_000 * 4;
-const SIGNAL_FREQ: f64 = 440_f64;
-const CARRIER_FREQ: f64 = 1_000_000f64;
+const SAMPLE_RATE: usize = 2_000_000 * 4;
+// const SIGNAL_FREQ: f64 = 440_f64;
+const SIGNAL_FREQ: f64 = 7_000_f64;
+const CARRIER_FREQ: f64 = 2_000_000f64;
 const CUT_OFF: f64 = 200_000.;
 const NOISE: f32 = -INFINITY;
+const A:f64 = 0.5;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
-use rubato::{FastFixedIn, FastFixedOut, PolynomialDegree, Resampler};
+use rubato::{FastFixedOut, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
     lr: [Vec<f32>; 2],
-    buffer: [Vec<f32>; 2],
-    // sig: Vec<f32>,
+    sig: Vec<f32>,
     carrier: Vec<f32>,
     modulator: FmModulator,
     demodulator: FmDeModulator,
     composite: CompositeSignal,
     restor: RestoredSignal,
     // up_sampler: FastFixedIn<f32>,
-    up_sampler: FastFixedIn<f32>,
+    up_sampler: FastFixedOut<f32>,
     continue_flag: bool,
     transmission_line: transmission_line::TransmissionLine,
 }
 impl MyChart {
     pub fn new() -> Self {
-        let up_sampler = FastFixedIn::new(
+        let up_sampler = FastFixedOut::new(
             SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
             SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
             PolynomialDegree::Linear,
-            SIZE,
+            BUFFER_SIZE,
             2,
         )
         .unwrap();
-        let buffer_size = dbg!(up_sampler.output_frames_next());
+        let buffer_size = dbg!(up_sampler.input_frames_next());
         let composite = CompositeSignal::new(SAMPLE_RATE as f32);
 
         let restor = RestoredSignal::new(SAMPLE_RATE as f32);
         Self {
             t: 0.0,
-            // sig: vec![0f32; BUFFER_SIZE],
-            lr: [vec![0.; SIZE], vec![0.; SIZE]],
-            buffer: [vec![0.; buffer_size], vec![0.; buffer_size]],
+            sig: vec![0f32; BUFFER_SIZE],
+            lr: [vec![0.; buffer_size], vec![0.; buffer_size]],
             carrier: Vec::new(), //vec![0f32; SIZE],
             modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
             demodulator: FmDeModulator::from(
@@ -199,91 +162,29 @@ impl MyChart {
             // 信号の作成
             for i in 0..self.lr[0].len() {
                 self.lr[0][i] =
-                    (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin()
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
                         as f32;
                 self.lr[1][i] =
-                    (self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
-                        .sin() as f32;
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+                        .sin()  * A) as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
-            // // upsample
-            // let _ = self
-            //     .up_sampler
-            //     .process_into_buffer(&[&self.lr[0], &self.lr[1]],&mut self.buffer.as_slice(), None)
-            //     .unwrap();
-            // self.composite.process_to_buffer(&self.buffer[0], &self.buffer[1], &mut self.buffer[0]);
-
-            // // 変調
-            // let modulated =
-            //     self.modulator.modulate(self.composite.get_buffer());
-            // self.transmission_line
-            //     .process_to_buf(&mut self.sig, modulated);
-            // // 復調
-            // self.demodulator.demodulate(&self.sig);
-            // // コンポジット
-            // self.restor.process(self.demodulator.get_buffer());
-
-            let buf_size = (self.up_sampler.output_frames_next());
-            let mut buf1 = unsafe {
-                std::slice::from_raw_parts_mut(
-                    self.buffer[0].as_ptr().cast_mut(),
-                    buf_size,
-                )
-            };
-
-            let mut buf2 = unsafe {
-                std::slice::from_raw_parts_mut(
-                    self.buffer[1].as_ptr().cast_mut(),
-                    buf_size,
-                )
-            };
-            let buffer = self
+            // upsample
+            let lr = self
                 .up_sampler
-                .process_into_buffer(
-                    &[&self.lr[0], &self.lr[1]],
-                    &mut [&mut buf1, &mut buf2],
-                    None,
-                )
+                .process(&[&self.lr[0], &self.lr[1]], None)
                 .unwrap();
-            self.composite.process_to_buffer(
-                self.buffer[0].as_slice(),
-                self.buffer[1].as_slice(),
-                buf1,
-            );
-            self.modulator
-                .modulate_to_buffer(self.buffer[0].as_slice(), buf2);
-            self.demodulator
-                .demodulate_to_buffer(self.buffer[1].as_slice(), buf1);
-            self.restor.process_to_buffer(
-                self.buffer[0].as_slice(),
-                buf1,
-                buf2,
-            );
+            self.composite.process(&lr[0], &lr[1]);
 
-            let factor = buf_size as f64 / self.lr[0].len() as f64;
-            // let samples = self.lr.as_mut();
-            self.lr[0]
-                .iter_mut()
-                .zip(
-                    utils::downsample_f32(
-                        // self.lr[1].as_mut_slice(),
-                        &self.buffer[0],
-                        factor,
-                    )
-                    .iter(),
-                )
-                .for_each(|(d, s)| *d = *s);
-            self.lr[1]
-                .iter_mut()
-                .zip(
-                    utils::downsample_f32(
-                        // self.lr[1].as_mut_slice(),
-                        &self.buffer[1],
-                        factor,
-                    )
-                    .iter(),
-                )
-                .for_each(|(d, s)| *d = *s);
+            // 変調
+            let modulated =
+                self.modulator.modulate(self.composite.get_buffer());
+            self.transmission_line
+                .process_to_buf(&mut self.sig, modulated);
+            // 復調
+            self.demodulator.demodulate(&self.sig);
+            // コンポジット
+            self.restor.process(self.demodulator.get_buffer());
         }
     }
 }
@@ -337,97 +238,97 @@ impl Chart<Message> for MyChart {
                     &self.lr[1],
                     AUDIO_SAMPLE_RATE,
                 ),
-                // // 2 => draw_chart(
-                // //     builder,
-                // //     labels[2],
-                // //     &(self.lr[0])
-                // //         .iter()
-                // //         .zip((self.lr[1]).iter())
-                // //         .map(|(&l, &r)| l + r)
-                // //         .collect::<Vec<f32>>(),
-                // //     AUDIO_SAMPLE_RATE,
-                // // ),
-                // // 3 => draw_chart(
-                // //     builder,
-                // //     labels[3],
-                // //     &(self.lr[0])
-                // //         .iter()
-                // //         .zip((self.lr[1]).iter())
-                // //         .map(|(&l, &r)| l - r)
-                // //         .collect::<Vec<f32>>(),
-                // //     AUDIO_SAMPLE_RATE,
-                // // ),
                 // 2 => draw_chart(
                 //     builder,
-                //     labels[4],
-                //     self.composite.get_buffer(),
-                //     self.composite.sample_rate() as usize,
+                //     labels[2],
+                //     &(self.lr[0])
+                //         .iter()
+                //         .zip((self.lr[1]).iter())
+                //         .map(|(&l, &r)| l + r)
+                //         .collect::<Vec<f32>>(),
+                //     AUDIO_SAMPLE_RATE,
                 // ),
-                // 3 => {
-                //     if !self.composite.get_buffer().is_empty() {
-                //         draw_spectrum(
-                //             builder,
-                //             labels[5],
-                //             self.composite.get_buffer(),
-                //             CompositeSignal::DEFAULT_SAMPLE_RATE as usize,
-                //             // FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)
-                //             FrequencyLimit::All,
-                //         )
-                //     }
-                // }
-                // 4 => draw_chart(
+                // 3 => draw_chart(
                 //     builder,
-                //     labels[6],
-                //     modurated_buffer,
-                //     SAMPLE_RATE,
+                //     labels[3],
+                //     &(self.lr[0])
+                //         .iter()
+                //         .zip((self.lr[1]).iter())
+                //         .map(|(&l, &r)| l - r)
+                //         .collect::<Vec<f32>>(),
+                //     AUDIO_SAMPLE_RATE,
                 // ),
-                // 5 => {
-                //     if !modurated_buffer.is_empty() {
-                //         draw_spectrum(
-                //             builder,
-                //             labels[7],
-                //             modurated_buffer,
-                //             SAMPLE_RATE,
-                //             FrequencyLimit::All,
-                //         );
-                //     }
-                // }
-                // 6 => draw_chart(
-                //     builder,
-                //     "transmission line",
-                //     &self.sig,
-                //     SAMPLE_RATE,
-                // ),
-                // 7 => draw_spectrum(
-                //     builder,
-                //     "transmission spectrum",
-                //     &self.sig,
-                //     SAMPLE_RATE,
-                //     FrequencyLimit::All,
-                // ),
-                // 8 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
-                // 9 => {
-                //     if !demodulate.is_empty() {
-                //         draw_spectrum(
-                //             builder,
-                //             labels[9],
-                //             demodulate,
-                //             SAMPLE_RATE,
-                //             /*FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)*/
-                //             FrequencyLimit::All,
-                //         );
-                //     }
-                // }
+                2 => draw_chart(
+                    builder,
+                    labels[4],
+                    self.composite.get_buffer(),
+                    self.composite.sample_rate() as usize,
+                ),
+                3 => {
+                    if !self.composite.get_buffer().is_empty() {
+                        draw_spectrum(
+                            builder,
+                            labels[5],
+                            self.composite.get_buffer(),
+                            CompositeSignal::DEFAULT_SAMPLE_RATE as usize,
+                            // FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)
+                            FrequencyLimit::All,
+                        )
+                    }
+                }
+                4 => draw_chart(
+                    builder,
+                    labels[6],
+                    modurated_buffer,
+                    SAMPLE_RATE,
+                ),
+                5 => {
+                    if !modurated_buffer.is_empty() {
+                        draw_spectrum(
+                            builder,
+                            labels[7],
+                            modurated_buffer,
+                            SAMPLE_RATE,
+                            FrequencyLimit::All,
+                        );
+                    }
+                }
+                6 => draw_chart(
+                    builder,
+                    "transmission line",
+                    &self.sig,
+                    SAMPLE_RATE,
+                ),
+                7 => draw_spectrum(
+                    builder,
+                    "transmission spectrum",
+                    &self.sig,
+                    SAMPLE_RATE,
+                    FrequencyLimit::All,
+                ),
+                8 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
+                9 => {
+                    if !demodulate.is_empty() {
+                        draw_spectrum(
+                            builder,
+                            labels[9],
+                            demodulate,
+                            SAMPLE_RATE,
+                            /*FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)*/
+                            FrequencyLimit::All,
+                        );
+                    }
+                }
                 10 => draw_chart(
                     builder,
                     labels[10],
-                    &self.buffer[0],
+                    &restore_buffer[0],
                     SAMPLE_RATE,
                 ),
                 11 => draw_chart(
                     builder,
                     labels[11],
-                    &self.buffer[1],
+                    &restore_buffer[1],
                     SAMPLE_RATE,
                 ),
                 _ => {}
@@ -448,7 +349,7 @@ fn draw_chart<DB: DrawingBackend>(
         .y_label_area_size(30)
         .build_cartesian_2d(
             0f32..data.len() as f32 / sample_rate as f32,
-            -3f32..3f32,
+            -1f32..1f32,
         )
         .unwrap();
 

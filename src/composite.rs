@@ -1,7 +1,7 @@
 /**
  * コンポジット信号を作成、復元するコード群
 */
-use crate::filter::{FilterInfo, Hpf, Lpf};
+use crate::filter::{FilterInfo, Hpf, Lpf,Bpf};
 use std::f32::consts::TAU;
 pub struct CompositeSignal {
     lpf: Lpf,
@@ -69,10 +69,12 @@ pub struct RestoredSignal {
     lpf: Lpf,
     lpf16: Lpf,
     hpf: Hpf,
+    bpf: Bpf,
     sample_rate: f32,
     out_buffer: [Vec<f32>; 2],
     t: f32,
-    filter_info: [FilterInfo; 4],
+    filter_info: [FilterInfo; 6],
+    bpf_info: [FilterInfo;2],
 }
 impl RestoredSignal {
     const PILOT_FREQ: f32 = 19_000f32;
@@ -83,6 +85,7 @@ impl RestoredSignal {
             lpf: Lpf::new(f, Self::PILOT_FREQ, Lpf::Q),
             lpf16: Lpf::new(f, 16_000f32, Lpf::Q),
             hpf: Hpf::new(f, Self::CARRIER_FREQ - Self::CUT_OFF_FREQ, Hpf::Q),
+            bpf: Bpf::new(f,Self::PILOT_FREQ -1000f32,Self::PILOT_FREQ +1000f32,Bpf::Q),
             sample_rate: f,
             out_buffer: [Vec::new(), Vec::new()],
             t: 0.,
@@ -91,7 +94,13 @@ impl RestoredSignal {
                 FilterInfo::default(),
                 FilterInfo::default(),
                 FilterInfo::default(),
+                FilterInfo::default(),
+                FilterInfo::default(),
             ],
+            bpf_info: [
+              FilterInfo::default(),
+              FilterInfo::default(),
+            ]
         }
     }
     pub fn process_to_buffer(
@@ -106,10 +115,12 @@ impl RestoredSignal {
             // 倍角公式によるキャリアの生成
             let sin = 2. * cos * (theta).sin();
             // PILOTの削除
-            let buffer = self.lpf.process_without_buffer(
-                -signal[i] * cos,
+            let buffer = self.lpf16.process_without_buffer(
+                -self.bpf.process_without_buffer(signal[i],&mut self.bpf_info) * cos,
+                // signal[i]* cos,
                 &mut self.filter_info[0],
             );
+            // println!("{buffer}");
             let remove_pilot = signal[i] + buffer * cos;
             //  get L+R and L-R with LPF
             let a = self
@@ -124,10 +135,11 @@ impl RestoredSignal {
                 &mut self.filter_info[2],
             ); // L-R
 
-            l_buffer[i] = (a + b) / 2.; // TODO いつかしっかり正規化
-            r_buffer[i] = (a - b) / 2.; // TODO いつかしっかり正規化
+            l_buffer[i] = self.lpf16.process_without_buffer((a + b) / 2.,&mut self.filter_info[4]);
+            r_buffer[i] =  self.lpf16.process_without_buffer((a - b) / 2.,&mut self.filter_info[5]);
             self.t += 1. / self.sample_rate;
         }
+        // unreachable!();
         self.t = self.t.rem_euclid(1.);
     }
     pub fn process(&mut self, signal: &[f32]) {
