@@ -1,7 +1,7 @@
 /**
  * コンポジット信号を作成、復元するコード群
 */
-use crate::filter::{FilterInfo, Hpf, Lpf,Bpf};
+use crate::filter::{Bpf, FilterInfo, Hpf, Lpf, Notch};
 use std::f32::consts::TAU;
 pub struct CompositeSignal {
     lpf: Lpf,
@@ -42,6 +42,8 @@ impl CompositeSignal {
             let r = self
                 .lpf
                 .process_without_buffer(r_channel[i], &mut self.filter_info[1]);
+            // let l = l_channel[i];
+            // let r = r_channel[i];
             let a = l + r;
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
@@ -50,7 +52,7 @@ impl CompositeSignal {
             buffer[i] = a + b + cos;
             self.t += 1. / self.sample_rate;
         }
-        self.t = self.t.rem_euclid(1.);
+        // self.t = self.t.rem_euclid(1.);
     }
     pub fn process(&mut self, l_channel: &[f32], r_channel: &[f32]) {
         if self.buffer.len() != l_channel.len() {
@@ -69,11 +71,12 @@ pub struct RestoredSignal {
     lpf: Lpf,
     lpf16: Lpf,
     hpf: Hpf,
+    notch: Notch,
     bpf: Bpf,
     sample_rate: f32,
     out_buffer: [Vec<f32>; 2],
     t: f32,
-    filter_info: [FilterInfo; 6],
+    filter_info: [FilterInfo; 8],
     bpf_info: [FilterInfo;2],
 }
 impl RestoredSignal {
@@ -86,10 +89,13 @@ impl RestoredSignal {
             lpf16: Lpf::new(f, 16_000f32, Lpf::Q),
             hpf: Hpf::new(f, Self::CARRIER_FREQ - Self::CUT_OFF_FREQ, Hpf::Q),
             bpf: Bpf::new(f,Self::PILOT_FREQ -1000f32,Self::PILOT_FREQ +1000f32,Bpf::Q),
+            notch: Notch::new(f, Self::PILOT_FREQ, Notch::BW),
             sample_rate: f,
             out_buffer: [Vec::new(), Vec::new()],
             t: 0.,
             filter_info: [
+                FilterInfo::default(),
+                FilterInfo::default(),
                 FilterInfo::default(),
                 FilterInfo::default(),
                 FilterInfo::default(),
@@ -115,13 +121,14 @@ impl RestoredSignal {
             // 倍角公式によるキャリアの生成
             let sin = 2. * cos * (theta).sin();
             // PILOTの削除
-            let buffer = self.lpf16.process_without_buffer(
-                -self.bpf.process_without_buffer(signal[i],&mut self.bpf_info) * cos,
-                // signal[i]* cos,
-                &mut self.filter_info[0],
-            );
+            // let buffer = self.dc_pass.process_without_buffer(
+            //     -self.bpf.process_without_buffer(signal[i],&mut self.bpf_info) * cos,
+            //     // signal[i]* cos,
+            //     &mut self.filter_info[0],
+            // );
             // println!("{buffer}");
-            let remove_pilot = signal[i] + buffer * cos;
+            // let remove_pilot = signal[i] + buffer * cos;
+            let remove_pilot = self.notch.process_without_buffer(signal[i],&mut self.filter_info[0],);
             //  get L+R and L-R with LPF
             let a = self
                 .lpf16
@@ -140,7 +147,7 @@ impl RestoredSignal {
             self.t += 1. / self.sample_rate;
         }
         // unreachable!();
-        self.t = self.t.rem_euclid(1.);
+        // self.t = self.t.rem_euclid(1.);
     }
     pub fn process(&mut self, signal: &[f32]) {
         if self.out_buffer[0].len() != signal.len() {

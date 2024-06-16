@@ -116,7 +116,7 @@ impl FmDeModulator {
             buffer: [Vec::new(), Vec::new()],
             diff_buffer: [Vec::new(), Vec::new()],
             sig_buffer: Vec::new(),
-            result_filter: Lpf::new(sample_rate as f32, CUT_OFF, Lpf::Q),
+            result_filter: Lpf::new(sample_rate as f32, f as f32 * 0.8, Lpf::Q),
             input_filter: Lpf::new(
                 sample_rate as f32,
                 input_cut as f32,
