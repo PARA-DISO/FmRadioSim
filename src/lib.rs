@@ -1,3 +1,10 @@
+/**
+ * エンファシス
+ * http://tamagomemo.blogspot.com/2009/07/blog-post.html
+ * デエンファシス
+ * https://qiita.com/yuji0001/items/b0bf121fb8b912c02856
+ *  http://www.kumikomi.net/archives/2009/06/fm.php?page=9
+*/
 // use dasp::Sample;
 // use log::info;
 use nih_plug::prelude::*;
@@ -82,7 +89,7 @@ struct Param {
 impl Default for Param {
     fn default() -> Self {
         Self {
-            noise_gain: Arc::new(RwLock::new(-std::f32::INFINITY)),
+            noise_gain: Arc::new(RwLock::new(-70.)),
         }
     }
 }
@@ -102,8 +109,8 @@ impl Default for FmRadio {
                 (FM_CARRIER_FREQ + CUT_OFF) as f64,
             ),
             // 伝送路
-            // transmission_line: TransmissionLine::from_snr(-90.),
-            transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),
+            transmission_line: TransmissionLine::from_snr(-110.),
+            // transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),
             // コンポジット
             composite: CompositeSignal::new(UPPER_SAMPLE_RATE as f32),
             restore: RestoredSignal::new(UPPER_SAMPLE_RATE as f32),

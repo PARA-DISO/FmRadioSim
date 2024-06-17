@@ -95,7 +95,7 @@ const SAMPLE_RATE: usize = 1_000_000 * 4;
 const SIGNAL_FREQ: f64 = 7_000_f64;
 const CARRIER_FREQ: f64 = 1_000_000f64;
 const CUT_OFF: f64 = 200_000.;
-const NOISE: f32 = -INFINITY;
+const NOISE: f32 = -70.;
 const A:f64 = 0.5;
 use fm_modulator::{FmDeModulator, FmModulator};
 
@@ -161,12 +161,12 @@ impl MyChart {
         if self.continue_flag {
             // 信号の作成
             for i in 0..self.lr[0].len() {
-                self.lr[0][i] =
-                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
-                        as f32;
-                self.lr[1][i] =
-                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
-                        .sin()  * A) as f32;
+                // self.lr[0][i] =
+                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
+                //         as f32;
+                // self.lr[1][i] =
+                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+                //         .sin()  * A) as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
             // upsample
