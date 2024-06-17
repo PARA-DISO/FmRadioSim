@@ -65,7 +65,7 @@ struct FmRadio {
     fm_modulator: FmModulator,
     fm_demodulator: FmDeModulator,
     // 伝送路
-    // transmission_line: TransmissionLine,
+    transmission_line: TransmissionLine,
     // コンポジット
     composite: CompositeSignal,
     restore: RestoredSignal,
@@ -102,7 +102,8 @@ impl Default for FmRadio {
                 (FM_CARRIER_FREQ + CUT_OFF) as f64,
             ),
             // 伝送路
-            // transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),
+            // transmission_line: TransmissionLine::from_snr(-90.),
+            transmission_line: TransmissionLine::from_snr(-std::f32::INFINITY),
             // コンポジット
             composite: CompositeSignal::new(UPPER_SAMPLE_RATE as f32),
             restore: RestoredSignal::new(UPPER_SAMPLE_RATE as f32),
@@ -232,6 +233,7 @@ impl Plugin for FmRadio {
             &mut [&mut buf1, &mut buf2],
             None,
         );
+        // Tx
         self.composite.process_to_buffer(
             self.buffer[0].as_slice(),
             self.buffer[1].as_slice(),
@@ -239,6 +241,9 @@ impl Plugin for FmRadio {
         );
         self.fm_modulator
             .modulate_to_buffer(self.buffer[0].as_slice(), buf2);
+        // 伝送路
+        self.transmission_line.process(self.buffer[1].as_mut_slice());
+        // Rx
         self.fm_demodulator
             .demodulate_to_buffer(self.buffer[1].as_slice(), buf1);
         self.restore

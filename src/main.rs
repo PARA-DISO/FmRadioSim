@@ -161,12 +161,12 @@ impl MyChart {
         if self.continue_flag {
             // 信号の作成
             for i in 0..self.lr[0].len() {
-                // self.lr[0][i] =
-                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
-                //         as f32;
-                // self.lr[1][i] =
-                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
-                //         .sin()  * A) as f32;
+                self.lr[0][i] =
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
+                        as f32;
+                self.lr[1][i] =
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+                        .sin()  * A) as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
             // upsample
@@ -185,6 +185,7 @@ impl MyChart {
             self.demodulator.demodulate(&self.sig);
             // コンポジット
             self.restor.process(self.demodulator.get_buffer());
+            // self.restor.process(self.composite.get_buffer())
         }
     }
 }

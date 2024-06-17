@@ -2,31 +2,31 @@
  * コンポジット信号を作成、復元するコード群
 */
 use crate::filter::{Bpf, FilterInfo, Hpf, Lpf, Notch};
-use std::f32::consts::TAU;
+use std::f64::consts::TAU;
 pub struct CompositeSignal {
     lpf: Lpf,
-    sample_rate: f32,
+    sample_rate: f64,
     buffer: Vec<f32>, // L,R or L+R, L-R
-    t: f32,
+    t: f64,
     filter_info: [FilterInfo; 2],
 }
 impl CompositeSignal {
-    const PILOT_FREQ: f32 = 19_000f32;
-    const CARRIER_FREQ: f32 = Self::PILOT_FREQ * 2.;
-    const CUT_OFF_FREQ: f32 = 15_000f32;
-    pub const DEFAULT_SAMPLE_RATE: f32 =
+    const PILOT_FREQ: f64 = 19_000.;
+    const CARRIER_FREQ: f64 = Self::PILOT_FREQ * 2.;
+    const CUT_OFF_FREQ: f64 = 15_000f64;
+    pub const DEFAULT_SAMPLE_RATE: f64 =
         (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) * 3.;
     pub fn new(f: f32) -> Self {
         Self {
-            lpf: Lpf::new(f, Self::CUT_OFF_FREQ, Lpf::Q),
-            sample_rate: f,
+            lpf: Lpf::new(f, Self::CUT_OFF_FREQ as f32, Lpf::Q),
+            sample_rate: f as f64,
             buffer: Vec::new(),
             filter_info: [FilterInfo::default(), FilterInfo::default()],
             t: 0.,
         }
     }
     pub fn sample_rate(&self) -> f32 {
-        self.sample_rate
+        self.sample_rate as f32
     }
     pub fn process_to_buffer(
         &mut self,
@@ -48,8 +48,8 @@ impl CompositeSignal {
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
             let double_sin = cos * theta.sin() * 2.;
-            let b = (l - r) * double_sin;
-            buffer[i] = a + b + cos;
+            let b = (l - r) * double_sin as f32;
+            buffer[i] = a + b + cos as f32;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);
@@ -68,29 +68,31 @@ impl CompositeSignal {
     }
 }
 pub struct RestoredSignal {
+    input_filter: Lpf,
     lpf: Lpf,
     lpf16: Lpf,
     hpf: Hpf,
     notch: Notch,
     bpf: Bpf,
-    sample_rate: f32,
+    sample_rate: f64,
     out_buffer: [Vec<f32>; 2],
-    t: f32,
+    t: f64,
     filter_info: [FilterInfo; 8],
     bpf_info: [FilterInfo;2],
 }
 impl RestoredSignal {
-    const PILOT_FREQ: f32 = 19_000f32;
-    const CARRIER_FREQ: f32 = Self::PILOT_FREQ * 2.;
-    const CUT_OFF_FREQ: f32 = 15_000f32;
+    const PILOT_FREQ: f64 = 19_000f64;
+    const CARRIER_FREQ: f64 = Self::PILOT_FREQ * 2.;
+    const CUT_OFF_FREQ: f64 = 15_000f64;
     pub fn new(f: f32) -> Self {
         Self {
-            lpf: Lpf::new(f, Self::PILOT_FREQ, Lpf::Q),
+            input_filter: Lpf::new(f,(Self::PILOT_FREQ+Self::CUT_OFF_FREQ) as f32,Lpf::Q),
+            lpf: Lpf::new(f, Self::PILOT_FREQ as f32, Lpf::Q),
             lpf16: Lpf::new(f, 16_000f32, Lpf::Q),
-            hpf: Hpf::new(f, Self::CARRIER_FREQ - Self::CUT_OFF_FREQ, Hpf::Q),
-            bpf: Bpf::new(f,Self::PILOT_FREQ -1000f32,Self::PILOT_FREQ +1000f32,Bpf::Q),
-            notch: Notch::new(f, Self::PILOT_FREQ, Notch::BW),
-            sample_rate: f,
+            hpf: Hpf::new(f, (Self::CARRIER_FREQ - Self::CUT_OFF_FREQ)  as f32, Hpf::Q),
+            bpf: Bpf::new(f,(Self::PILOT_FREQ -1000.) as f32,(Self::PILOT_FREQ +1000.) as f32,Bpf::Q),
+            notch: Notch::new(f, Self::PILOT_FREQ as f32, Notch::BW),
+            sample_rate: f as f64,
             out_buffer: [Vec::new(), Vec::new()],
             t: 0.,
             filter_info: [
@@ -116,6 +118,7 @@ impl RestoredSignal {
         r_buffer: &mut [f32],
     ) {
         for i in 0..signal.len() {
+            let sig = self.input_filter.process_without_buffer(signal[i],&mut self.filter_info[6]);
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
             // 倍角公式によるキャリアの生成
@@ -128,7 +131,7 @@ impl RestoredSignal {
             // );
             // println!("{buffer}");
             // let remove_pilot = signal[i] + buffer * cos;
-            let remove_pilot = self.notch.process_without_buffer(signal[i],&mut self.filter_info[0],);
+            let remove_pilot = self.notch.process_without_buffer(sig,&mut self.filter_info[0],);
             //  get L+R and L-R with LPF
             let a = self
                 .lpf16
@@ -138,7 +141,7 @@ impl RestoredSignal {
                     remove_pilot,
                     &mut self.filter_info[3],
                 ) * 2.
-                    * sin,
+                    * sin as f32,
                 &mut self.filter_info[2],
             ); // L-R
 
