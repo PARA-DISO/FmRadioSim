@@ -187,7 +187,8 @@ impl Notch {
     pub const BW: f32 = 0.3;
     pub fn new(sample_rate: f32, cutoff: f32, bw: f32) -> Self {
         let omega = TAU * cutoff / sample_rate;
-        let alpha = omega.sin() * (std::f32::consts::LN_2/ 2f32 * bw * omega / omega.sin()).sinh();
+        let alpha = omega.sin()
+            * (std::f32::consts::LN_2 / 2f32 * bw * omega / omega.sin()).sinh();
         let a0 = 1f32 + alpha;
         let a1 = -2f32 * omega.cos();
         let a2 = 1f32 - alpha;
@@ -243,6 +244,60 @@ impl Notch {
         let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
             - self.c3 * *out1
             - self.c4 * *out2;
+        *info = [signal, *in1, buf, *out1];
+        buf
+    }
+}
+pub struct Emphasis {
+    a0: f32,
+    a1: f32,
+    b0: f32,
+}
+impl Emphasis {
+    pub fn new(sample_rate: f32, tau: f32) -> Self {
+        let sample_rate = sample_rate / 1000.;
+        let coeff = sample_rate / (sample_rate + 2. * tau);
+        let coeff_rev = 1. / coeff;
+        Self {
+            a0: coeff_rev,
+            a1: -coeff_rev * (2. * tau - sample_rate)
+                / (2. * tau + sample_rate),
+            b0: 1.,
+        }
+    }
+    pub fn process_without_buffer(
+        &self,
+        signal: f32,
+        info: &mut FilterInfo,
+    ) -> f32 {
+        let [in1, _, out1, _] = info;
+        let buf = self.a0 * signal + self.a1 * *in1 - self.b0 * *out1;
+        *info = [signal, *in1, buf, *out1];
+        buf
+    }
+}
+pub struct Deemphasis {
+    a0: f32,
+    a1: f32,
+    b0: f32,
+}
+impl Deemphasis {
+    pub fn new(sample_rate: f32, tau: f32) -> Self {
+        let sample_rate = sample_rate / 1000.;
+        let coeff = sample_rate / (sample_rate + 2. * tau);
+        Self {
+            a0: coeff,
+            a1: coeff,
+            b0: (2. * tau - sample_rate) / (2. * tau + sample_rate),
+        }
+    }
+    pub fn process_without_buffer(
+        &self,
+        signal: f32,
+        info: &mut FilterInfo,
+    ) -> f32 {
+        let [in1, _, out1, _] = info;
+        let buf = self.a0 * signal + self.a1 * *in1 + self.b0 * *out1;
         *info = [signal, *in1, buf, *out1];
         buf
     }

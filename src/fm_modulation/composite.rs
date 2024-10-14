@@ -1,14 +1,16 @@
 /**
  * コンポジット信号を作成、復元するコード群
 */
-use crate::filter::{Bpf, FilterInfo, Hpf, Lpf, Notch};
+use crate::filter::{Bpf, Emphasis, FilterInfo, Hpf, Lpf, Notch};
 use std::f64::consts::TAU;
+
+use super::filter::Deemphasis;
 pub struct CompositeSignal {
     lpf: Lpf,
     sample_rate: f64,
-    buffer: Vec<f32>, // L,R or L+R, L-R
     t: f64,
-    filter_info: [FilterInfo; 2],
+    filter_info: [FilterInfo; 4],
+    emphasis: Emphasis,
 }
 impl CompositeSignal {
     const PILOT_FREQ: f64 = 19_000.;
@@ -20,9 +22,9 @@ impl CompositeSignal {
         Self {
             lpf: Lpf::new(f, Self::CUT_OFF_FREQ as f32, Lpf::Q),
             sample_rate: f as f64,
-            buffer: Vec::new(),
-            filter_info: [FilterInfo::default(), FilterInfo::default()],
+            filter_info: [FilterInfo::default(); 4],
             t: 0.,
+            emphasis: Emphasis::new(f, 50.),
         }
     }
     pub fn sample_rate(&self) -> f32 {
@@ -34,16 +36,22 @@ impl CompositeSignal {
         r_channel: &[f32],
         buffer: &mut [f32],
     ) {
-        // Low Pass
         for i in 0..l_channel.len() {
+            // Low Pass
             let l = self
                 .lpf
                 .process_without_buffer(l_channel[i], &mut self.filter_info[0]);
             let r = self
                 .lpf
                 .process_without_buffer(r_channel[i], &mut self.filter_info[1]);
-            // let l = l_channel[i];
-            // let r = r_channel[i];
+            // Pre-Emphasis
+            let l = self
+                .emphasis
+                .process_without_buffer(l, &mut self.filter_info[2]);
+            let r = self
+                .emphasis
+                .process_without_buffer(r, &mut self.filter_info[3]);
+            // Convert to Composite Signal
             let a = l + r;
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
@@ -54,31 +62,17 @@ impl CompositeSignal {
         }
         // self.t = self.t.rem_euclid(1.);
     }
-    pub fn process(&mut self, l_channel: &[f32], r_channel: &[f32]) {
-        if self.buffer.len() != l_channel.len() {
-            self.buffer = vec![0.0; l_channel.len()];
-        }
-        self.process_to_buffer(l_channel, r_channel, unsafe {
-            let ptr = self.buffer.as_ptr();
-            std::slice::from_raw_parts_mut(ptr.cast_mut(), l_channel.len())
-        });
-    }
-    pub fn get_buffer(&self) -> &[f32] {
-        self.buffer.as_slice()
-    }
 }
 pub struct RestoredSignal {
     input_filter: Lpf,
-    lpf: Lpf,
     lpf16: Lpf,
     hpf: Hpf,
     notch: Notch,
-    bpf: Bpf,
+    de_emphasis: Deemphasis,
     sample_rate: f64,
-    out_buffer: [Vec<f32>; 2],
     t: f64,
     filter_info: [FilterInfo; 8],
-    bpf_info: [FilterInfo;2],
+    de_emphasis_info: [FilterInfo; 2],
 }
 impl RestoredSignal {
     const PILOT_FREQ: f64 = 19_000f64;
@@ -86,29 +80,19 @@ impl RestoredSignal {
     const CUT_OFF_FREQ: f64 = 15_000f64;
     pub fn new(f: f32) -> Self {
         Self {
-            input_filter: Lpf::new(f,(Self::PILOT_FREQ+Self::CUT_OFF_FREQ) as f32,Lpf::Q),
-            lpf: Lpf::new(f, Self::PILOT_FREQ as f32, Lpf::Q),
+            input_filter: Lpf::new(
+                f,
+                (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) as f32,
+                Lpf::Q,
+            ),
             lpf16: Lpf::new(f, 16_000f32, Lpf::Q),
-            hpf: Hpf::new(f, (Self::CARRIER_FREQ - Self::CUT_OFF_FREQ)  as f32, Hpf::Q),
-            bpf: Bpf::new(f,(Self::PILOT_FREQ -1000.) as f32,(Self::PILOT_FREQ +1000.) as f32,Bpf::Q),
+            hpf: Hpf::new(f, Self::PILOT_FREQ as f32, Hpf::Q),
             notch: Notch::new(f, Self::PILOT_FREQ as f32, Notch::BW),
+            de_emphasis: Deemphasis::new(f, 50.),
             sample_rate: f as f64,
-            out_buffer: [Vec::new(), Vec::new()],
             t: 0.,
-            filter_info: [
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-                FilterInfo::default(),
-            ],
-            bpf_info: [
-              FilterInfo::default(),
-              FilterInfo::default(),
-            ]
+            filter_info: [FilterInfo::default(); 8],
+            de_emphasis_info: [FilterInfo::default(); 2],
         }
     }
     pub fn process_to_buffer(
@@ -118,7 +102,9 @@ impl RestoredSignal {
         r_buffer: &mut [f32],
     ) {
         for i in 0..signal.len() {
-            let sig = self.input_filter.process_without_buffer(signal[i],&mut self.filter_info[6]);
+            let sig = self
+                .input_filter
+                .process_without_buffer(signal[i], &mut self.filter_info[6]);
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
             // 倍角公式によるキャリアの生成
@@ -131,11 +117,14 @@ impl RestoredSignal {
             // );
             // println!("{buffer}");
             // let remove_pilot = signal[i] + buffer * cos;
-            let remove_pilot = self.notch.process_without_buffer(sig,&mut self.filter_info[0],);
+            let remove_pilot = self
+                .notch
+                .process_without_buffer(sig, &mut self.filter_info[0]);
             //  get L+R and L-R with LPF
             let a = self
                 .lpf16
                 .process_without_buffer(remove_pilot, &mut self.filter_info[1]); // L+R
+                                                                                 // remove_pilot
             let b = self.lpf16.process_without_buffer(
                 self.hpf.process_without_buffer(
                     remove_pilot,
@@ -145,29 +134,23 @@ impl RestoredSignal {
                 &mut self.filter_info[2],
             ); // L-R
 
-            l_buffer[i] = self.lpf16.process_without_buffer((a + b) / 2.,&mut self.filter_info[4]);
-            r_buffer[i] =  self.lpf16.process_without_buffer((a - b) / 2.,&mut self.filter_info[5]);
+            let l = self
+                .lpf16
+                .process_without_buffer((a + b) / 2., &mut self.filter_info[4]);
+            let r = self
+                .lpf16
+                .process_without_buffer((a - b) / 2., &mut self.filter_info[5]);
+            let l = self
+                .de_emphasis
+                .process_without_buffer(l, &mut self.de_emphasis_info[0]);
+            let r = self
+                .de_emphasis
+                .process_without_buffer(r, &mut self.de_emphasis_info[1]);
+            l_buffer[i] = l;
+            r_buffer[i] = r;
             self.t += 1. / self.sample_rate;
         }
-        // unreachable!();
         // self.t = self.t.rem_euclid(1.);
-    }
-    pub fn process(&mut self, signal: &[f32]) {
-        if self.out_buffer[0].len() != signal.len() {
-            self.out_buffer =
-                [vec![0.0; signal.len()], vec![0.0; signal.len()]];
-        }
-        let (l, r) = unsafe {
-            let l_ptr = self.out_buffer[0].as_ptr();
-            let r_ptr = self.out_buffer[1].as_ptr();
-            (
-                std::slice::from_raw_parts_mut(l_ptr.cast_mut(), signal.len()),
-                std::slice::from_raw_parts_mut(r_ptr.cast_mut(), signal.len()),
-            )
-        };
-        self.process_to_buffer(signal, l, r);
-    }
-    pub fn get_buffer(&self) -> &[Vec<f32>] {
-        self.out_buffer.as_slice()
+        // println!("de-composite-testdata-abs-max: {} ({a_max} - {b_max})",a_max/b_max );
     }
 }

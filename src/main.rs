@@ -4,19 +4,17 @@ use iced::time;
 
 use iced::{
     executor,
-    widget::{Column, Container, Text}, Alignment, Application, Command, Element, Length, Settings, Subscription, Theme,
+    widget::{Column, Container, Text},
+    Alignment, Application, Command, Element, Length, Settings, Subscription,
+    Theme,
 };
 use plotters::{coord::Shift, prelude::*};
-use plotters_iced::{Chart, ChartWidget,};
-use spectrum_analyzer::scaling::{
-    scale_to_zero_to_one,
-};
+use plotters_iced::{Chart, ChartWidget};
+use spectrum_analyzer::scaling::scale_to_zero_to_one;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
-mod filter;
-mod fm_modulator;
-
-pub mod composite;
+mod fm_modulation;
+use fm_modulation::*;
 mod transmission_line;
 fn main() {
     State::run(Settings {
@@ -83,69 +81,126 @@ impl Application for State {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // window::frames().map(|_| Message::Tick)
-        time::every(time::Duration::from_millis(50)).map(|_| Message::Tick)
+        time::every(time::Duration::from_millis(1000)).map(|_| Message::Tick)
     }
 }
 // use std::collections::VecDeque;
-const SIZE: usize = 512;
-const BUFFER_SIZE: usize = 512 << 4;
-const AUDIO_SAMPLE_RATE: usize = 44100;
-const SAMPLE_RATE: usize = 1_000_000 * 4;
-// const SIGNAL_FREQ: f64 = 440_f64;
-const SIGNAL_FREQ: f64 = 7_000_f64;
-const CARRIER_FREQ: f64 = 1_000_000f64;
-const CUT_OFF: f64 = 200_000.;
+const BUFFER_SIZE: usize = 512;
+const AUDIO_SAMPLE_RATE: usize = 44_100;
+const COMPOSITE_SAMPLE_RATE: usize = 132_300;
+// const FM_MODULATION_SAMPLE_RATE: usize = 176_400_000;
+const FM_MODULATION_SAMPLE_RATE: usize = 48000;
+const SIGNAL_FREQ: f64 = 440f64;
+// const CARRIER_FREQ: f64 = 79_500_000f64;
+const CARRIER_FREQ: f64 = 440.;
+// const CUT_OFF: f64 = 200_000.;
+const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
-const A:f64 = 0.5;
+const A: f64 = 0.5;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
-use rubato::{FastFixedOut, PolynomialDegree, Resampler};
+use rubato::{FastFixedIn, FastFixedOut, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
-    lr: [Vec<f32>; 2],
-    sig: Vec<f32>,
-    carrier: Vec<f32>,
+    // convertor/modulator
+    composite: CompositeSignal,
+    restore: RestoredSignal,
     modulator: FmModulator,
     demodulator: FmDeModulator,
-    composite: CompositeSignal,
-    restor: RestoredSignal,
-    // up_sampler: FastFixedIn<f32>,
-    up_sampler: FastFixedOut<f32>,
+    // signals
+    input_signal: [Vec<f32>; 2],
+    up_sampled_input: [Vec<f32>; 2],
+    composite_signal: Vec<f32>,
+    restored_signal: [Vec<f32>; 2],
+    output_signal: [Vec<f32>; 2],
+    resampled_composite: Vec<f32>,
+    modulated_signal: Vec<f32>,
+    demodulated_signal: Vec<f32>,
+    resampled_demodulate: Vec<f32>,
+    // Re-Sampler
+    up_sampler_to100k: FastFixedIn<f32>,
+    down_sampler_to_output: FastFixedOut<f32>,
+    up_sample_to176m: FastFixedIn<f32>,
+    down_sample_to_100k: FastFixedOut<f32>,
     continue_flag: bool,
-    transmission_line: transmission_line::TransmissionLine,
+    // transmission_line: transmission_line::TransmissionLine,
 }
 impl MyChart {
     pub fn new() -> Self {
-        let up_sampler = FastFixedOut::new(
-            SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
-            SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
+        let up_sampler_to100k = FastFixedIn::new(
+            COMPOSITE_SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
+            1000.,
             PolynomialDegree::Linear,
             BUFFER_SIZE,
             2,
         )
         .unwrap();
-        let buffer_size = dbg!(up_sampler.input_frames_next());
-        let composite = CompositeSignal::new(SAMPLE_RATE as f32);
+        let down_sampler_to_output = FastFixedOut::new(
+            AUDIO_SAMPLE_RATE as f64 / COMPOSITE_SAMPLE_RATE as f64,
+            1.,
+            PolynomialDegree::Linear,
+            BUFFER_SIZE,
+            2,
+        )
+        .unwrap();
+        let composite_buffer_size = up_sampler_to100k.output_frames_next();
+        let up_sample_to176m = FastFixedIn::new(
+            FM_MODULATION_SAMPLE_RATE as f64 / COMPOSITE_SAMPLE_RATE as f64,
+            10000.,
+            PolynomialDegree::Linear,
+            composite_buffer_size,
+            1,
+        )
+        .unwrap();
+        let down_sample_to_100k = FastFixedOut::new(
+            COMPOSITE_SAMPLE_RATE as f64 / FM_MODULATION_SAMPLE_RATE as f64,
+            1.,
+            PolynomialDegree::Linear,
+            composite_buffer_size,
+            1,
+        )
+        .unwrap();
+        let modulated_buffer_size = up_sample_to176m.input_frames_next();
+        let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f32);
 
-        let restor = RestoredSignal::new(SAMPLE_RATE as f32);
+        let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f32);
+
         Self {
             t: 0.0,
-            sig: vec![0f32; BUFFER_SIZE],
-            lr: [vec![0.; buffer_size], vec![0.; buffer_size]],
-            carrier: Vec::new(), //vec![0f32; SIZE],
-            modulator: FmModulator::from(CARRIER_FREQ, SAMPLE_RATE as f64),
+            // Modulator
+            composite,
+            restore,
+            modulator: FmModulator::from(
+                CARRIER_FREQ,
+                FM_MODULATION_SAMPLE_RATE as f64,
+            ),
             demodulator: FmDeModulator::from(
                 CARRIER_FREQ,
-                SAMPLE_RATE as f64,
+                FM_MODULATION_SAMPLE_RATE as f64,
                 CARRIER_FREQ + CUT_OFF,
             ),
-            composite,
-            restor,
-            up_sampler,
-            transmission_line: transmission_line::TransmissionLine::from_snr(
-                NOISE,
-            ),
+            // Buffer
+            input_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
+            up_sampled_input: [
+                vec![0.; composite_buffer_size],
+                vec![0.; composite_buffer_size],
+            ],
+            composite_signal: vec![0.; composite_buffer_size],
+            resampled_composite: vec![0.; modulated_buffer_size],
+            modulated_signal: vec![0.; modulated_buffer_size],
+            demodulated_signal: vec![0.; modulated_buffer_size],
+            resampled_demodulate: vec![0.; composite_buffer_size],
+            restored_signal: [
+                vec![0.; composite_buffer_size],
+                vec![0.; composite_buffer_size],
+            ],
+            output_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
+            // Re-Sampler
+            up_sampler_to100k,
+            down_sampler_to_output,
+            up_sample_to176m,
+            down_sample_to_100k,
             continue_flag: true,
         }
     }
@@ -160,32 +215,88 @@ impl MyChart {
     fn next(&mut self) {
         if self.continue_flag {
             // 信号の作成
-            for i in 0..self.lr[0].len() {
-                // self.lr[0][i] =
-                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin() * A )
-                //         as f32;
-                // self.lr[1][i] =
-                //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
-                //         .sin()  * A) as f32;
+            for i in 0..self.input_signal[0].len() {
+                self.input_signal[0][i] =
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin()
+                        * A) as f32;
+                self.input_signal[1][i] =
+                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+                        .sin()
+                        * A) as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
-            // upsample
-            let lr = self
-                .up_sampler
-                .process(&[&self.lr[0], &self.lr[1]], None)
+            // up-sample
+            let _ = self
+                .up_sampler_to100k
+                .process_into_buffer(
+                    &self.input_signal,
+                    &mut self.up_sampled_input,
+                    None,
+                )
                 .unwrap();
-            self.composite.process(&lr[0], &lr[1]);
-
-            // 変調
-            let modulated =
-                self.modulator.modulate(self.composite.get_buffer());
-            self.transmission_line
-                .process_to_buf(&mut self.sig, modulated);
-            // 復調
-            self.demodulator.demodulate(&self.sig);
-            // コンポジット
-            self.restor.process(self.demodulator.get_buffer());
-            // self.restor.process(self.composite.get_buffer())
+            // composite
+            self.composite.process_to_buffer(
+                &self.up_sampled_input[0],
+                &self.up_sampled_input[1],
+                &mut self.composite_signal,
+            );
+            // up-sample to MHz Order
+            // let _ = self.up_sample_to176m.process_into_buffer(
+            //     &[&self.composite_signal],
+            //     &mut [&mut self.resampled_composite],
+            //     None,
+            // );
+            // Modulate
+            self.modulator.process_to_buffer(
+                &self.resampled_composite,
+                &mut self.modulated_signal,
+            );
+            // de-modulate
+            self.demodulator.process_to_buffer(
+                &self.modulated_signal,
+                &mut self.demodulated_signal,
+            );
+            // down-sample to 100kHz Order
+            let _ = self.down_sample_to_100k.process_into_buffer(
+                &[&self.demodulated_signal],
+                &mut [&mut self.resampled_demodulate],
+                None,
+            );
+            // restore
+            let l_out = unsafe {
+                std::slice::from_raw_parts_mut(
+                    self.restored_signal
+                        .get_unchecked(0)
+                        .as_slice()
+                        .as_ptr()
+                        .cast_mut(),
+                    self.restored_signal.get_unchecked(0).len(),
+                )
+            };
+            let r_out = unsafe {
+                std::slice::from_raw_parts_mut(
+                    self.restored_signal
+                        .get_unchecked(1)
+                        .as_slice()
+                        .as_ptr()
+                        .cast_mut(),
+                    self.restored_signal.get_unchecked(1).len(),
+                )
+            };
+            self.restore.process_to_buffer(
+                &self.resampled_demodulate,
+                l_out,
+                r_out,
+            );
+            let _ = self
+                .down_sampler_to_output
+                .process_into_buffer(
+                    &self.restored_signal,
+                    &mut self.output_signal,
+                    None,
+                )
+                .unwrap();
+          // self.continue_flag = false;
         }
     }
 }
@@ -207,130 +318,65 @@ impl Chart<Message> for MyChart {
     ) {
         let children = root.split_evenly((3, 4));
 
-        let labels: [&str; 12] = [
+        let labels: [&str; 7] = [
             "L In",
             "R In",
-            "L+R",
-            "L-R",
             "Composite",
-            "Composite Spectrum",
             "FM Modulated",
-            "Modulated Spectrum",
             "FM Demodulated",
-            "Demodulated Spectrum",
             "L Out",
             "R Out",
         ];
-        let modurated_buffer = self.modulator.get_buffer();
-        let demodulate = self.demodulator.get_buffer();
-        let restore_buffer = self.restor.get_buffer();
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
                 0 => draw_chart(
                     builder,
-                    labels[0],
-                    &self.lr[0],
+                    labels[i],
+                    &self.input_signal[0],
                     AUDIO_SAMPLE_RATE,
                 ),
                 1 => draw_chart(
                     builder,
-                    labels[1],
-                    &self.lr[1],
+                    labels[i],
+                    &self.input_signal[1],
                     AUDIO_SAMPLE_RATE,
                 ),
                 // 2 => draw_chart(
                 //     builder,
-                //     labels[2],
-                //     &(self.lr[0])
-                //         .iter()
-                //         .zip((self.lr[1]).iter())
-                //         .map(|(&l, &r)| l + r)
-                //         .collect::<Vec<f32>>(),
-                //     AUDIO_SAMPLE_RATE,
-                // ),
-                // 3 => draw_chart(
-                //     builder,
-                //     labels[3],
-                //     &(self.lr[0])
-                //         .iter()
-                //         .zip((self.lr[1]).iter())
-                //         .map(|(&l, &r)| l - r)
-                //         .collect::<Vec<f32>>(),
-                //     AUDIO_SAMPLE_RATE,
+                //     labels[i],
+                //     &self.composite_signal,
+                //     COMPOSITE_SAMPLE_RATE,
                 // ),
                 2 => draw_chart(
-                    builder,
-                    labels[4],
-                    self.composite.get_buffer(),
-                    self.composite.sample_rate() as usize,
+                      builder,
+                      labels[i],
+                      &self.resampled_composite,
+                      FM_MODULATION_SAMPLE_RATE,
+                  ),
+                3 => draw_chart(
+                  builder,
+                  labels[i],
+                  &self.modulated_signal,
+                  FM_MODULATION_SAMPLE_RATE,
                 ),
-                3 => {
-                    if !self.composite.get_buffer().is_empty() {
-                        draw_spectrum(
-                            builder,
-                            labels[5],
-                            self.composite.get_buffer(),
-                            CompositeSignal::DEFAULT_SAMPLE_RATE as usize,
-                            // FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)
-                            FrequencyLimit::All,
-                        )
-                    }
-                }
                 4 => draw_chart(
-                    builder,
-                    labels[6],
-                    modurated_buffer,
-                    SAMPLE_RATE,
+                  builder,
+                  labels[i],
+                  &self.demodulated_signal,
+                  FM_MODULATION_SAMPLE_RATE,
                 ),
-                5 => {
-                    if !modurated_buffer.is_empty() {
-                        draw_spectrum(
-                            builder,
-                            labels[7],
-                            modurated_buffer,
-                            SAMPLE_RATE,
-                            FrequencyLimit::All,
-                        );
-                    }
-                }
+                5 => draw_chart(
+                    builder,
+                    labels[i],
+                    &self.output_signal[0],
+                    AUDIO_SAMPLE_RATE,
+                ),
                 6 => draw_chart(
                     builder,
-                    "transmission line",
-                    &self.sig,
-                    SAMPLE_RATE,
-                ),
-                7 => draw_spectrum(
-                    builder,
-                    "transmission spectrum",
-                    &self.sig,
-                    SAMPLE_RATE,
-                    FrequencyLimit::All,
-                ),
-                8 => draw_chart(builder, labels[8], demodulate, SAMPLE_RATE),
-                9 => {
-                    if !demodulate.is_empty() {
-                        draw_spectrum(
-                            builder,
-                            labels[9],
-                            demodulate,
-                            SAMPLE_RATE,
-                            /*FrequencyLimit::Max(CompositeSignal::DEFAULT_SAMPLE_RATE)*/
-                            FrequencyLimit::All,
-                        );
-                    }
-                }
-                10 => draw_chart(
-                    builder,
-                    labels[10],
-                    &restore_buffer[0],
-                    SAMPLE_RATE,
-                ),
-                11 => draw_chart(
-                    builder,
-                    labels[11],
-                    &restore_buffer[1],
-                    SAMPLE_RATE,
+                    labels[i],
+                    &self.output_signal[1],
+                    AUDIO_SAMPLE_RATE,
                 ),
                 _ => {}
             }

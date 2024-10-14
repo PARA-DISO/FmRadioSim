@@ -32,7 +32,7 @@ impl TransmissionLine {
             //     * 2.
             //     - 1.)
             //     * self.noise_coeff;
-            let n =  (self.rng.next_u32() as f64 / u32::MAX as f64) * 2. -1.;
+            let n = (self.rng.next_u32() as f64 / u32::MAX as f64) * 2. - 1.;
             *x = s + n as f32 * self.noise_coeff;
         });
     }
@@ -44,7 +44,7 @@ impl TransmissionLine {
             //     sfmt::ThreadRng,
             // >(&self.normal, &mut self.rng.write().unwrap())
             //     * self.noise_coeff;
-             let n =  (self.rng.next_u32() as f64 / u32::MAX as f64) * 2. -1.;
+            let n = (self.rng.next_u32() as f64 / u32::MAX as f64) * 2. - 1.;
             *d = s + n as f32 * self.noise_coeff;
             // *d = s + n;
         });

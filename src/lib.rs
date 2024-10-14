@@ -15,9 +15,8 @@ use std::sync::{
 };
 // mod adpcm;
 // use adpcm::{Decoder, Encoder};
-mod composite;
-mod filter;
-mod fm_modulator;
+mod fm_modulation;
+use fm_modulation::*;
 mod transmission_line;
 use composite::{CompositeSignal, RestoredSignal};
 use fm_modulator::{FmDeModulator, FmModulator};
@@ -247,12 +246,13 @@ impl Plugin for FmRadio {
             buf1,
         );
         self.fm_modulator
-            .modulate_to_buffer(self.buffer[0].as_slice(), buf2);
+            .process_to_buffer(self.buffer[0].as_slice(), buf2);
         // 伝送路
-        self.transmission_line.process(self.buffer[1].as_mut_slice());
+        self.transmission_line
+            .process(self.buffer[1].as_mut_slice());
         // Rx
         self.fm_demodulator
-            .demodulate_to_buffer(self.buffer[1].as_slice(), buf1);
+            .process_to_buffer(self.buffer[1].as_slice(), buf1);
         self.restore
             .process_to_buffer(self.buffer[0].as_slice(), buf1, buf2);
         // // down sample
