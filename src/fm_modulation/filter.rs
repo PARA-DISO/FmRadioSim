@@ -10,7 +10,7 @@ pub struct Lpf {
 impl Lpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
     pub fn new(sample_rate: f64, cutoff: f64, q: f64) -> Self {
-        let omega = TAU * cutoff / dbg!(sample_rate);
+        let omega = TAU * dbg!(cutoff) / dbg!(sample_rate);
         let alpha = dbg!(omega).sin() / (2f64 * q);
         let a0 = 1f64 + dbg!(alpha);
         let a1 = -2f64 * omega.cos();
@@ -84,7 +84,7 @@ pub struct Hpf {
 impl Hpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
     pub fn new(sample_rate: f64, cutoff: f64, q: f64) -> Self {
-        let omega = TAU * cutoff / sample_rate;
+        let omega = TAU * (cutoff / sample_rate);
         let alpha = omega.sin() / (2f64 * q);
         let a0 = 1f64 + alpha;
         let a1 = -2f64 * omega.cos();
@@ -301,4 +301,39 @@ impl Deemphasis {
         *info = [signal, *in1, buf, *out1];
         buf
     }
+}
+
+pub mod iir {
+  use std::f64::consts::{FRAC_1_SQRT_2, TAU};
+  use super::FilterInfo;
+  pub struct Lpf {
+    c:[f64;5]
+  }
+  impl Lpf {
+    pub fn new(fs: f64, cutoff: f64, q: f64) -> Self {
+      
+      Self {
+       c:[
+        0.109048063230392067,
+        0.241209445449140775,
+        0.299484982640934372,
+        0.241209445449140775,
+        0.109048063230392067,
+    ]
+      }
+    }
+    pub fn process_without_buffer(
+      &self,
+      signal: f64,
+      info: &mut FilterInfo,
+    ) -> f64 {
+      let buf = self.c[0] * signal
+              + self.c[1] * info[0]
+              + self.c[2] * info[1]
+              + self.c[3] * info[2]
+              + self.c[4] * info[3];
+      *info = [signal, info[0], info[1], info[2]];
+      buf
+    }
+  }
 }

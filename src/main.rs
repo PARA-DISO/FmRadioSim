@@ -90,15 +90,19 @@ const TEST_BUFFER_SIZE: usize = 256;
 const AUDIO_SAMPLE_RATE: usize = 44_100;
 const COMPOSITE_SAMPLE_RATE: usize = 132_300;
 // const FM_MODULATION_SAMPLE_RATE: usize = 176_400_000;
-const FM_MODULATION_SAMPLE_RATE: usize = 220500000;
+// const FM_MODULATION_SAMPLE_RATE: usize = 220500000;
 // const FM_MODULATION_SAMPLE_RATE: usize = (79_500_000 * 3);
+const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
+// const FM_MODULATION_SAMPLE_RATE: usize = 882_000_000;
 const SIGNAL_FREQ: f64 = 440f64;
-// const CARRIER_FREQ: f64 = 79_500_000f64;
-const CARRIER_FREQ: f64 = 79_500_0f64;
+const CARRIER_FREQ: f64 =    79_500_000f64;
+const SIGNAL_MAX_FREQ: f64 = 106_000f64;
+// const CARRIER_FREQ: f64 = 79_500_0f64;
 // const CUT_OFF: f64 = 200_000.;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
+
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
@@ -166,6 +170,7 @@ impl MyChart {
         .unwrap();
         // let modulated_buffer_size = dbg!(up_sample_to176m.output_frames_next());
         let modulated_buffer_size = TEST_BUFFER_SIZE;
+        
         let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f64);
 
         let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f64);
@@ -183,7 +188,7 @@ impl MyChart {
             demodulator: FmDeModulator::from(
                 CARRIER_FREQ,
                 FM_MODULATION_SAMPLE_RATE as f64,
-                CARRIER_FREQ + CUT_OFF,
+                SIGNAL_MAX_FREQ,
             ),
             // Buffer
             input_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
@@ -192,7 +197,7 @@ impl MyChart {
                 vec![0.; composite_buffer_size],
             ],
             composite_signal: vec![0.; composite_buffer_size],
-            resampled_composite: vec![0.; modulated_buffer_size],
+            resampled_composite: vec![0.; dbg!(modulated_buffer_size)],
             modulated_signal: vec![0.; modulated_buffer_size],
             demodulated_signal: vec![0.; modulated_buffer_size],
             resampled_demodulate: vec![0.; composite_buffer_size],

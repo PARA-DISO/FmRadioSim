@@ -1,6 +1,6 @@
 use std::f64::consts::TAU;
 pub type SampleType = f32;
-use crate::filter::{FilterInfo, Lpf};
+use crate::filter::{FilterInfo, Lpf,iir};
 const MOD_THETA: f64 = TIME_MULTIPLIER * TAU;
 const TIME_MULTIPLIER: f64 = 1.;
 pub struct FmModulator {
@@ -65,12 +65,12 @@ pub struct FmDeModulator {
     // sample_rate: f64,
     sample_period: f64,
     carrier_freq: f64,
-    result_filter: Lpf,
-    input_filter: Lpf,
+    result_filter: iir::Lpf,
+    // input_filter: Lpf,
     filter_info: [FilterInfo; 3],
 }
 impl FmDeModulator {
-    pub fn from(f: f64, sample_rate: f64, input_cut: f64) -> Self {
+    pub fn from(f: f64, sample_rate: f64, cut_off: f64) -> Self {
       println!("periodic: {}", (1. / sample_rate));
         Self {
             t: 0.0,
@@ -78,12 +78,12 @@ impl FmDeModulator {
             // sample_rate,
             sample_period: dbg!(TIME_MULTIPLIER / sample_rate),
             carrier_freq: f,
-            result_filter: Lpf::new(dbg!(sample_rate), dbg!(f), Lpf::Q),
-            input_filter: Lpf::new(
-                sample_rate,
-                f,
-                Lpf::Q,
-            ),
+            result_filter: iir::Lpf::new(dbg!(sample_rate), dbg!(cut_off), Lpf::Q),
+            // input_filter: Lpf::new(
+            //     sample_rate,
+            //     f,
+            //     Lpf::Q,
+            // ),
             filter_info: [FilterInfo::default(); 3],
         }
     }
@@ -124,10 +124,10 @@ impl FmDeModulator {
             max = max.max(buffer[i].abs());
             self.t += TAU * self.carrier_freq * self.sample_period;
         }
-        println!("out_max: {max}");
-        println!("input_max: {s_max}");
-        println!("complex max: ({re_max},{im_max})");
-        println!("complex d max: ({dre_max},{dim_max})");
+        // println!("out_max: {max}");
+        // println!("input_max: {s_max}");
+        // println!("complex max: ({re_max},{im_max})");
+        // println!("complex d max: ({dre_max},{dim_max})");
         // self.t = self.t.rem_euclid(TAU);
     }
     #[inline(always)]
