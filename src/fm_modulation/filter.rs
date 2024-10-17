@@ -1,32 +1,32 @@
-use std::f32::consts::{FRAC_1_SQRT_2, TAU};
-pub type FilterInfo = [f32; 4];
+use std::f64::consts::{FRAC_1_SQRT_2, TAU};
+pub type FilterInfo = [f64; 4];
 pub struct Lpf {
-    c0: f32,
-    c1: f32,
-    c2: f32,
-    c3: f32,
-    c4: f32,
+    c0: f64,
+    c1: f64,
+    c2: f64,
+    c3: f64,
+    c4: f64,
 }
 impl Lpf {
-    pub const Q: f32 = FRAC_1_SQRT_2;
-    pub fn new(sample_rate: f32, cutoff: f32, q: f32) -> Self {
-        let omega = TAU * cutoff / sample_rate;
-        let alpha = omega.sin() / (2f32 * q);
-        let a0 = 1f32 + alpha;
-        let a1 = -2f32 * omega.cos();
-        let a2 = 1f32 - alpha;
-        let b0 = (1f32 - omega.cos()) / 2f32;
-        let b1 = 1f32 - omega.cos();
-        let b2 = (1f32 - omega.cos()) / 2f32;
+    pub const Q: f64 = FRAC_1_SQRT_2;
+    pub fn new(sample_rate: f64, cutoff: f64, q: f64) -> Self {
+        let omega = TAU * cutoff / dbg!(sample_rate);
+        let alpha = dbg!(omega).sin() / (2f64 * q);
+        let a0 = 1f64 + dbg!(alpha);
+        let a1 = -2f64 * omega.cos();
+        let a2 = 1f64 - alpha;
+        let b0 = (1f64 - omega.cos()) / 2f64;
+        let b1 = 1f64 - omega.cos();
+        let b2 = (1f64 - omega.cos()) / 2f64;
         Self {
-            c0: b0 / a0,
-            c1: b1 / a0,
-            c2: b2 / a0,
-            c3: a1 / a0,
-            c4: a2 / a0,
+            c0: dbg!(b0 / a0),
+            c1: dbg!(b1 / a0),
+            c2: dbg!(b2 / a0),
+            c3: dbg!(a1 / a0),
+            c4: dbg!(a2 / a0),
         }
     }
-    pub fn process(&self, signal: &mut [f32]) {
+    pub fn process(&self, signal: &mut [f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -43,7 +43,7 @@ impl Lpf {
         }
     }
 
-    pub fn process_with_buffer(&self, buffer: &mut [f32], signal: &[f32]) {
+    pub fn process_with_buffer(&self, buffer: &mut [f64], signal: &[f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -61,9 +61,9 @@ impl Lpf {
     }
     pub fn process_without_buffer(
         &self,
-        signal: f32,
+        signal: f64,
         info: &mut FilterInfo,
-    ) -> f32 {
+    ) -> f64 {
         let [in1, in2, out1, out2] = info;
         let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
             - self.c3 * *out1
@@ -74,24 +74,24 @@ impl Lpf {
 }
 
 pub struct Hpf {
-    c0: f32,
-    c1: f32,
-    c2: f32,
-    c3: f32,
-    c4: f32,
+    c0: f64,
+    c1: f64,
+    c2: f64,
+    c3: f64,
+    c4: f64,
 }
 
 impl Hpf {
-    pub const Q: f32 = FRAC_1_SQRT_2;
-    pub fn new(sample_rate: f32, cutoff: f32, q: f32) -> Self {
+    pub const Q: f64 = FRAC_1_SQRT_2;
+    pub fn new(sample_rate: f64, cutoff: f64, q: f64) -> Self {
         let omega = TAU * cutoff / sample_rate;
-        let alpha = omega.sin() / (2f32 * q);
-        let a0 = 1f32 + alpha;
-        let a1 = -2f32 * omega.cos();
-        let a2 = 1f32 - alpha;
-        let b0 = (1f32 + omega.cos()) / 2f32;
-        let b1 = -(1f32 + omega.cos());
-        let b2 = (1f32 + omega.cos()) / 2f32;
+        let alpha = omega.sin() / (2f64 * q);
+        let a0 = 1f64 + alpha;
+        let a1 = -2f64 * omega.cos();
+        let a2 = 1f64 - alpha;
+        let b0 = (1f64 + omega.cos()) / 2f64;
+        let b1 = -(1f64 + omega.cos());
+        let b2 = (1f64 + omega.cos()) / 2f64;
         Self {
             c0: b0 / a0,
             c1: b1 / a0,
@@ -100,7 +100,7 @@ impl Hpf {
             c4: a2 / a0,
         }
     }
-    pub fn process(&self, signal: &mut [f32]) {
+    pub fn process(&self, signal: &mut [f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -116,7 +116,7 @@ impl Hpf {
             o1 = signal[i];
         }
     }
-    pub fn process_with_buffer(&self, buffer: &mut [f32], signal: &[f32]) {
+    pub fn process_with_buffer(&self, buffer: &mut [f64], signal: &[f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -134,9 +134,9 @@ impl Hpf {
     }
     pub fn process_without_buffer(
         &mut self,
-        signal: f32,
+        signal: f64,
         info: &mut FilterInfo,
-    ) -> f32 {
+    ) -> f64 {
         let [in1, in2, out1, out2] = info;
         let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
             - self.c3 * *out1
@@ -150,23 +150,23 @@ pub struct Bpf {
     low_pass: Lpf,
 }
 impl Bpf {
-    pub const Q: f32 = FRAC_1_SQRT_2;
-    pub fn new(sample_rate: f32, low_cut: f32, high_cut: f32, q: f32) -> Bpf {
+    pub const Q: f64 = FRAC_1_SQRT_2;
+    pub fn new(sample_rate: f64, low_cut: f64, high_cut: f64, q: f64) -> Bpf {
         Bpf {
             high_pass: Hpf::new(sample_rate, low_cut, q),
             low_pass: Lpf::new(sample_rate, high_cut, q),
         }
     }
-    // pub fn process(&mut self, signal: &mut [f32]) {
+    // pub fn process(&mut self, signal: &mut [f64]) {
     //     for i in 0..signal.len() {
     //         signal[i] = self.process_without_buffer(signal[i]);
     //     }
     // }
     pub fn process_without_buffer(
         &mut self,
-        signal: f32,
+        signal: f64,
         filter_info: &mut [FilterInfo; 2],
-    ) -> f32 {
+    ) -> f64 {
         let buf = self
             .high_pass
             .process_without_buffer(signal, &mut filter_info[0]);
@@ -176,25 +176,25 @@ impl Bpf {
 }
 
 pub struct Notch {
-    c0: f32,
-    c1: f32,
-    c2: f32,
-    c3: f32,
-    c4: f32,
+    c0: f64,
+    c1: f64,
+    c2: f64,
+    c3: f64,
+    c4: f64,
 }
 
 impl Notch {
-    pub const BW: f32 = 0.3;
-    pub fn new(sample_rate: f32, cutoff: f32, bw: f32) -> Self {
+    pub const BW: f64 = 0.3;
+    pub fn new(sample_rate: f64, cutoff: f64, bw: f64) -> Self {
         let omega = TAU * cutoff / sample_rate;
         let alpha = omega.sin()
-            * (std::f32::consts::LN_2 / 2f32 * bw * omega / omega.sin()).sinh();
-        let a0 = 1f32 + alpha;
-        let a1 = -2f32 * omega.cos();
-        let a2 = 1f32 - alpha;
-        let b0 = 1f32;
-        let b1 = -2f32 * omega.cos();
-        let b2 = 1f32;
+            * (std::f64::consts::LN_2 / 2f64 * bw * omega / omega.sin()).sinh();
+        let a0 = 1f64 + alpha;
+        let a1 = -2f64 * omega.cos();
+        let a2 = 1f64 - alpha;
+        let b0 = 1f64;
+        let b1 = -2f64 * omega.cos();
+        let b2 = 1f64;
         Self {
             c0: b0 / a0,
             c1: b1 / a0,
@@ -203,7 +203,7 @@ impl Notch {
             c4: a2 / a0,
         }
     }
-    pub fn process(&self, signal: &mut [f32]) {
+    pub fn process(&self, signal: &mut [f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -219,7 +219,7 @@ impl Notch {
             o1 = signal[i];
         }
     }
-    pub fn process_with_buffer(&self, buffer: &mut [f32], signal: &[f32]) {
+    pub fn process_with_buffer(&self, buffer: &mut [f64], signal: &[f64]) {
         let mut i1 = 0.;
         let mut i2 = 0.;
         let mut o1 = 0.;
@@ -237,9 +237,9 @@ impl Notch {
     }
     pub fn process_without_buffer(
         &mut self,
-        signal: f32,
+        signal: f64,
         info: &mut FilterInfo,
-    ) -> f32 {
+    ) -> f64 {
         let [in1, in2, out1, out2] = info;
         let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
             - self.c3 * *out1
@@ -249,12 +249,12 @@ impl Notch {
     }
 }
 pub struct Emphasis {
-    a0: f32,
-    a1: f32,
-    b0: f32,
+    a0: f64,
+    a1: f64,
+    b0: f64,
 }
 impl Emphasis {
-    pub fn new(sample_rate: f32, tau: f32) -> Self {
+    pub fn new(sample_rate: f64, tau: f64) -> Self {
         let sample_rate = sample_rate / 1000.;
         let coeff = sample_rate / (sample_rate + 2. * tau);
         let coeff_rev = 1. / coeff;
@@ -267,9 +267,9 @@ impl Emphasis {
     }
     pub fn process_without_buffer(
         &self,
-        signal: f32,
+        signal: f64,
         info: &mut FilterInfo,
-    ) -> f32 {
+    ) -> f64 {
         let [in1, _, out1, _] = info;
         let buf = self.a0 * signal + self.a1 * *in1 - self.b0 * *out1;
         *info = [signal, *in1, buf, *out1];
@@ -277,12 +277,12 @@ impl Emphasis {
     }
 }
 pub struct Deemphasis {
-    a0: f32,
-    a1: f32,
-    b0: f32,
+    a0: f64,
+    a1: f64,
+    b0: f64,
 }
 impl Deemphasis {
-    pub fn new(sample_rate: f32, tau: f32) -> Self {
+    pub fn new(sample_rate: f64, tau: f64) -> Self {
         let sample_rate = sample_rate / 1000.;
         let coeff = sample_rate / (sample_rate + 2. * tau);
         Self {
@@ -293,9 +293,9 @@ impl Deemphasis {
     }
     pub fn process_without_buffer(
         &self,
-        signal: f32,
+        signal: f64,
         info: &mut FilterInfo,
-    ) -> f32 {
+    ) -> f64 {
         let [in1, _, out1, _] = info;
         let buf = self.a0 * signal + self.a1 * *in1 + self.b0 * *out1;
         *info = [signal, *in1, buf, *out1];

@@ -85,14 +85,16 @@ impl Application for State {
     }
 }
 // use std::collections::VecDeque;
-const BUFFER_SIZE: usize = 512;
+const BUFFER_SIZE: usize = 256;
+const TEST_BUFFER_SIZE: usize = 256;
 const AUDIO_SAMPLE_RATE: usize = 44_100;
 const COMPOSITE_SAMPLE_RATE: usize = 132_300;
 // const FM_MODULATION_SAMPLE_RATE: usize = 176_400_000;
-const FM_MODULATION_SAMPLE_RATE: usize = 48000;
+const FM_MODULATION_SAMPLE_RATE: usize = 220500000;
+// const FM_MODULATION_SAMPLE_RATE: usize = (79_500_000 * 3);
 const SIGNAL_FREQ: f64 = 440f64;
 // const CARRIER_FREQ: f64 = 79_500_000f64;
-const CARRIER_FREQ: f64 = 440.;
+const CARRIER_FREQ: f64 = 79_500_0f64;
 // const CUT_OFF: f64 = 200_000.;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
@@ -109,25 +111,26 @@ struct MyChart {
     modulator: FmModulator,
     demodulator: FmDeModulator,
     // signals
-    input_signal: [Vec<f32>; 2],
-    up_sampled_input: [Vec<f32>; 2],
-    composite_signal: Vec<f32>,
-    restored_signal: [Vec<f32>; 2],
-    output_signal: [Vec<f32>; 2],
-    resampled_composite: Vec<f32>,
-    modulated_signal: Vec<f32>,
-    demodulated_signal: Vec<f32>,
-    resampled_demodulate: Vec<f32>,
+    input_signal: [Vec<f64>; 2],
+    up_sampled_input: [Vec<f64>; 2],
+    composite_signal: Vec<f64>,
+    restored_signal: [Vec<f64>; 2],
+    output_signal: [Vec<f64>; 2],
+    resampled_composite: Vec<f64>,
+    modulated_signal: Vec<f64>,
+    demodulated_signal: Vec<f64>,
+    resampled_demodulate: Vec<f64>,
     // Re-Sampler
-    up_sampler_to100k: FastFixedIn<f32>,
-    down_sampler_to_output: FastFixedOut<f32>,
-    up_sample_to176m: FastFixedIn<f32>,
-    down_sample_to_100k: FastFixedOut<f32>,
+    up_sampler_to100k: FastFixedIn<f64>,
+    down_sampler_to_output: FastFixedOut<f64>,
+    up_sample_to176m: FastFixedIn<f64>,
+    down_sample_to_100k: FastFixedOut<f64>,
     continue_flag: bool,
     // transmission_line: transmission_line::TransmissionLine,
 }
 impl MyChart {
     pub fn new() -> Self {
+        println!("fs/fc: {}", FM_MODULATION_SAMPLE_RATE as f32 / CARRIER_FREQ as f32);
         let up_sampler_to100k = FastFixedIn::new(
             COMPOSITE_SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
             1000.,
@@ -144,7 +147,7 @@ impl MyChart {
             2,
         )
         .unwrap();
-        let composite_buffer_size = up_sampler_to100k.output_frames_next();
+        let composite_buffer_size = dbg!(up_sampler_to100k.output_frames_next());
         let up_sample_to176m = FastFixedIn::new(
             FM_MODULATION_SAMPLE_RATE as f64 / COMPOSITE_SAMPLE_RATE as f64,
             10000.,
@@ -161,11 +164,13 @@ impl MyChart {
             1,
         )
         .unwrap();
-        let modulated_buffer_size = up_sample_to176m.input_frames_next();
-        let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f32);
+        // let modulated_buffer_size = dbg!(up_sample_to176m.output_frames_next());
+        let modulated_buffer_size = TEST_BUFFER_SIZE;
+        let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f64);
 
-        let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f32);
-
+        let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f64);
+        dbg!(down_sample_to_100k.output_frames_next());
+        dbg!(down_sampler_to_output.output_frames_next());
         Self {
             t: 0.0,
             // Modulator
@@ -215,16 +220,17 @@ impl MyChart {
     fn next(&mut self) {
         if self.continue_flag {
             // 信号の作成
-            for i in 0..self.input_signal[0].len() {
-                self.input_signal[0][i] =
-                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin()
-                        * A) as f32;
-                self.input_signal[1][i] =
-                    ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
-                        .sin()
-                        * A) as f32;
-                self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
-            }
+            // for i in 0..self.input_signal[0].len() {
+            //     self.input_signal[0][i] =
+            //         ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ).sin()
+            //             * A);
+            //     self.input_signal[1][i] =
+            //         ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+            //             .sin()
+            //             * A);
+            //     self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
+            // }
+            /*
             // up-sample
             let _ = self
                 .up_sampler_to100k
@@ -241,11 +247,11 @@ impl MyChart {
                 &mut self.composite_signal,
             );
             // up-sample to MHz Order
-            // let _ = self.up_sample_to176m.process_into_buffer(
-            //     &[&self.composite_signal],
-            //     &mut [&mut self.resampled_composite],
-            //     None,
-            // );
+            let _ = self.up_sample_to176m.process_into_buffer(
+                &[&self.composite_signal],
+                &mut [&mut self.resampled_composite],
+                None,
+            );
             // Modulate
             self.modulator.process_to_buffer(
                 &self.resampled_composite,
@@ -296,6 +302,20 @@ impl MyChart {
                     None,
                 )
                 .unwrap();
+            */
+          for i in 0..self.modulated_signal.len() {
+              self.modulated_signal[i] =
+                  (self.t * 2f64 * std::f64::consts::PI * CARRIER_FREQ).sin();
+              // self.input_signal[1][i] =
+              //     ((self.t * 2f64 * std::f64::consts::PI * SIGNAL_FREQ * 2.)
+              //         .sin()
+              //         * A);
+              self.t += 1f64 / FM_MODULATION_SAMPLE_RATE as f64;
+          }
+          self.demodulator.process_to_buffer(
+            &self.modulated_signal,
+            &mut self.demodulated_signal,
+          );
           // self.continue_flag = false;
         }
     }
@@ -330,30 +350,30 @@ impl Chart<Message> for MyChart {
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
-                0 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.input_signal[0],
-                    AUDIO_SAMPLE_RATE,
-                ),
-                1 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.input_signal[1],
-                    AUDIO_SAMPLE_RATE,
-                ),
+                // 0 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.input_signal[0],
+                //     AUDIO_SAMPLE_RATE,
+                // ),
+                // 1 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.input_signal[1],
+                //     AUDIO_SAMPLE_RATE,
+                // ),
                 // 2 => draw_chart(
                 //     builder,
                 //     labels[i],
                 //     &self.composite_signal,
                 //     COMPOSITE_SAMPLE_RATE,
                 // ),
-                2 => draw_chart(
-                      builder,
-                      labels[i],
-                      &self.resampled_composite,
-                      FM_MODULATION_SAMPLE_RATE,
-                  ),
+                // 2 => draw_chart(
+                //       builder,
+                //       labels[i],
+                //       &self.resampled_composite,
+                //       FM_MODULATION_SAMPLE_RATE,
+                //   ),
                 3 => draw_chart(
                   builder,
                   labels[i],
@@ -366,18 +386,18 @@ impl Chart<Message> for MyChart {
                   &self.demodulated_signal,
                   FM_MODULATION_SAMPLE_RATE,
                 ),
-                5 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.output_signal[0],
-                    AUDIO_SAMPLE_RATE,
-                ),
-                6 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.output_signal[1],
-                    AUDIO_SAMPLE_RATE,
-                ),
+                // 5 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.output_signal[0],
+                //     AUDIO_SAMPLE_RATE,
+                // ),
+                // 6 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.output_signal[1],
+                //     AUDIO_SAMPLE_RATE,
+                // ),
                 _ => {}
             }
         }
@@ -386,7 +406,7 @@ impl Chart<Message> for MyChart {
 fn draw_chart<DB: DrawingBackend>(
     mut chart: ChartBuilder<DB>,
     label: &str,
-    data: &[f32],
+    data: &[f64],
     sample_rate: usize,
 ) {
     let mut chart = chart
@@ -395,8 +415,8 @@ fn draw_chart<DB: DrawingBackend>(
         .x_label_area_size(30)
         .y_label_area_size(30)
         .build_cartesian_2d(
-            0f32..data.len() as f32 / sample_rate as f32,
-            -1f32..1f32,
+            0f64..data.len() as f64 / sample_rate as f64,
+            -1f64..1f64,
         )
         .unwrap();
 
@@ -418,7 +438,7 @@ fn draw_chart<DB: DrawingBackend>(
             data.iter()
                 // .take(SIZE)
                 .enumerate()
-                .map(|(i, x)| (i as f32 / sample_rate as f32, *x)),
+                .map(|(i, x)| (i as f64 / sample_rate as f64, *x)),
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),

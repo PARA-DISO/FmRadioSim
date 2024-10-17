@@ -18,23 +18,23 @@ impl CompositeSignal {
     const CUT_OFF_FREQ: f64 = 15_000f64;
     pub const DEFAULT_SAMPLE_RATE: f64 =
         (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) * 3.;
-    pub fn new(f: f32) -> Self {
+    pub fn new(f: f64) -> Self {
         Self {
-            lpf: Lpf::new(f, Self::CUT_OFF_FREQ as f32, Lpf::Q),
+            lpf: Lpf::new(f, Self::CUT_OFF_FREQ, Lpf::Q),
             sample_rate: f as f64,
             filter_info: [FilterInfo::default(); 4],
             t: 0.,
             emphasis: Emphasis::new(f, 50.),
         }
     }
-    pub fn sample_rate(&self) -> f32 {
-        self.sample_rate as f32
+    pub fn sample_rate(&self) -> f64 {
+        self.sample_rate as f64
     }
     pub fn process_to_buffer(
         &mut self,
-        l_channel: &[f32],
-        r_channel: &[f32],
-        buffer: &mut [f32],
+        l_channel: &[f64],
+        r_channel: &[f64],
+        buffer: &mut [f64],
     ) {
         for i in 0..l_channel.len() {
             // Low Pass
@@ -56,8 +56,8 @@ impl CompositeSignal {
             let theta = TAU * Self::PILOT_FREQ * self.t;
             let cos = theta.cos();
             let double_sin = cos * theta.sin() * 2.;
-            let b = (l - r) * double_sin as f32;
-            buffer[i] = a + b + cos as f32;
+            let b = (l - r) * double_sin;
+            buffer[i] = a + b + cos;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);
@@ -78,16 +78,16 @@ impl RestoredSignal {
     const PILOT_FREQ: f64 = 19_000f64;
     const CARRIER_FREQ: f64 = Self::PILOT_FREQ * 2.;
     const CUT_OFF_FREQ: f64 = 15_000f64;
-    pub fn new(f: f32) -> Self {
+    pub fn new(f: f64) -> Self {
         Self {
             input_filter: Lpf::new(
                 f,
-                (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) as f32,
+                (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ),
                 Lpf::Q,
             ),
-            lpf16: Lpf::new(f, 16_000f32, Lpf::Q),
-            hpf: Hpf::new(f, Self::PILOT_FREQ as f32, Hpf::Q),
-            notch: Notch::new(f, Self::PILOT_FREQ as f32, Notch::BW),
+            lpf16: Lpf::new(f, 16_000f64, Lpf::Q),
+            hpf: Hpf::new(f, Self::PILOT_FREQ, Hpf::Q),
+            notch: Notch::new(f, Self::PILOT_FREQ, Notch::BW),
             de_emphasis: Deemphasis::new(f, 50.),
             sample_rate: f as f64,
             t: 0.,
@@ -97,9 +97,9 @@ impl RestoredSignal {
     }
     pub fn process_to_buffer(
         &mut self,
-        signal: &[f32],
-        l_buffer: &mut [f32],
-        r_buffer: &mut [f32],
+        signal: &[f64],
+        l_buffer: &mut [f64],
+        r_buffer: &mut [f64],
     ) {
         for i in 0..signal.len() {
             let sig = self
@@ -130,7 +130,7 @@ impl RestoredSignal {
                     remove_pilot,
                     &mut self.filter_info[3],
                 ) * 2.
-                    * sin as f32,
+                    * sin,
                 &mut self.filter_info[2],
             ); // L-R
 
