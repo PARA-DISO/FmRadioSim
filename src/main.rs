@@ -1,5 +1,4 @@
 
-use std::f32::INFINITY;
 
 use iced::time;
 
@@ -233,7 +232,7 @@ impl MyChart {
         chart.into()
     }
     fn next(&mut self) {
-        use std::time::{Duration, Instant};
+        use std::time::Instant;
         if self.continue_flag {
             // 信号の作成
             for i in 0..self.input_signal[0].len() {

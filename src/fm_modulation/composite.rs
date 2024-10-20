@@ -1,7 +1,7 @@
 /**
  * コンポジット信号を作成、復元するコード群
 */
-use crate::filter::{Bpf, Emphasis, FilterInfo, Hpf, Lpf, Notch};
+use crate::filter::{Emphasis, FilterInfo, Hpf, Lpf, Notch};
 use std::f64::consts::TAU;
 
 use super::filter::Deemphasis;
@@ -21,14 +21,14 @@ impl CompositeSignal {
     pub fn new(f: f64) -> Self {
         Self {
             lpf: Lpf::new(f, Self::CUT_OFF_FREQ, Lpf::Q),
-            sample_rate: f as f64,
+            sample_rate: f,
             filter_info: [FilterInfo::default(); 4],
             t: 0.,
             emphasis: Emphasis::new(f, 50.),
         }
     }
     pub fn sample_rate(&self) -> f64 {
-        self.sample_rate as f64
+        self.sample_rate
     }
     pub fn process_to_buffer(
         &mut self,
@@ -82,14 +82,14 @@ impl RestoredSignal {
         Self {
             input_filter: Lpf::new(
                 f,
-                (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ),
+                Self::CARRIER_FREQ + Self::CUT_OFF_FREQ,
                 Lpf::Q,
             ),
             lpf16: Lpf::new(f, 16_000f64, Lpf::Q),
             hpf: Hpf::new(f, Self::PILOT_FREQ, Hpf::Q),
             notch: Notch::new(f, Self::PILOT_FREQ, Notch::BW),
             de_emphasis: Deemphasis::new(f, 50.),
-            sample_rate: f as f64,
+            sample_rate: f,
             t: 0.,
             filter_info: [FilterInfo::default(); 8],
             de_emphasis_info: [FilterInfo::default(); 2],

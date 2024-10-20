@@ -1,26 +1,8 @@
-/**
- * エンファシス
- * http://tamagomemo.blogspot.com/2009/07/blog-post.html
- * デエンファシス
- * https://qiita.com/yuji0001/items/b0bf121fb8b912c02856
- *  http://www.kumikomi.net/archives/2009/06/fm.php?page=9
-*/
-// use dasp::Sample;
-// use log::info;
-use nih_plug::prelude::*;
-use rubato::{FastFixedIn, PolynomialDegree, Resampler};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc, RwLock,
-};
 // mod adpcm;
 // use adpcm::{Decoder, Encoder};
 mod fm_modulation;
 use fm_modulation::*;
 mod transmission_line;
-use composite::{CompositeSignal, RestoredSignal};
-use fm_modulator::{FmDeModulator, FmModulator};
-use transmission_line::TransmissionLine;
 // use nih_plug_vizia::ViziaState;
 /*
 mod utils {

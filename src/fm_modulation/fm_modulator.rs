@@ -32,7 +32,6 @@ impl FmModulator {
             // sample_rate,
             sample_period: 1. / sample_rate,
             carrier_freq: f,
-            // buffer: Vec::new(),
         }
     }
     pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
@@ -77,9 +76,6 @@ impl FmDeModulator {
     }
     pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
         for i in 0..signal.len() {
-            // let s = self
-            //     .input_filter
-            //     .process_without_buffer(signal[i], &mut self.filter_info[0]);
             let s = signal[i];
             // 複素変換
             let re = self.result_filter.process_without_buffer(
