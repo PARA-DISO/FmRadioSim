@@ -16,7 +16,23 @@ const TITLE_FONT_SIZE: u16 = 22;
 mod fm_modulation;
 use fm_modulation::*;
 mod transmission_line;
+use std::ffi::c_void;
+#[link(name = "freq_modulation")]
+extern "C" {
+  pub fn fm_modulate(
+    output_signal: *mut f64 , input_signal: *const f64,
+    prev_sig: *mut f64, sum: *mut f64,
+    sample_periodic: f64,
+    angle: *mut f64 , modulate_index: f64, fc:f64, buf_len: u64
+  );
+  fn fm_demodulate(
+    output_signal: *mut f64, input_signal: *const f64,
+    sample_period: f64, filter_coeff: *const c_void,
+    filter_info: *mut *mut f64, prev: *const f64, angle: *mut f64, carrier_freq: f64, buf_len: u64
+  );
+}
 fn main() {
+  
     State::run(Settings {
         antialiasing: true,
         ..Settings::default()

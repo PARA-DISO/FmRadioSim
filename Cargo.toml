@@ -6,6 +6,11 @@ edition = "2021"
 crate-type=["cdylib"]
 [build]
 rustflags = ["-Z", "threads=8"]
+[profile.release]
+# lto = true
+[build-dependencies]
+cc = "1.1.31"
+
 [dependencies]
 iced = { version = "0.12.1", features = ["canvas","tokio"] }
 plotters = {version = "0.3.7",default_features = false, features = [
@@ -24,11 +29,11 @@ spectrum-analyzer = "1.5.0"
 
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
-simplelog = "0.12.2"
+# simplelog = "0.12.2"
 # nih_plug_vizia = { git="https://github.com/robbert-vdh/nih-plug" }
-atomic_float = "1.1.0"
+# atomic_float = "1.1.0"
 # strum = {version="0.26.3", features=["derive"]}
 # strum_macros = "0.26.2"
 rand_mt = "4.2.2"
 # easyfft = "0.4.1"
-qd = {git="https://github.com/Barandis/qd"}
+# qd = {git="https://github.com/Barandis/qd"}
