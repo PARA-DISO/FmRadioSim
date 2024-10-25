@@ -10,12 +10,12 @@ use iced::{
 };
 use plotters::{coord::Shift, prelude::*};
 use plotters_iced::{Chart, ChartWidget};
-use spectrum_analyzer::scaling::scale_to_zero_to_one;
-use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+// use spectrum_analyzer::scaling::scale_to_zero_to_one;
+// use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 mod fm_modulation;
 use fm_modulation::*;
-mod transmission_line;
+// mod transmission_line;
 use std::ffi::c_void;
 #[link(name = "freq_modulation")]
 extern "C" {
@@ -483,50 +483,50 @@ fn draw_chart<DB: DrawingBackend>(
         .unwrap();
 }
 
-fn draw_spectrum<DB: DrawingBackend>(
-    mut chart: ChartBuilder<DB>,
-    label: &str,
-    data: &[f32],
-    sample_rate: usize,
-    limit: FrequencyLimit,
-) {
-    let spectrum = samples_fft_to_spectrum(
-        data,
-        sample_rate as u32,
-        limit,
-        Some(&scale_to_zero_to_one),
-    )
-    .unwrap();
-    let mut chart = chart
-        .margin(10)
-        .caption(
-            format!("{} ({}Hz)", label, spectrum.max().0),
-            ("sans-serif", 22),
-        )
-        .x_label_area_size(30)
-        .y_label_area_size(30)
-        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
-        .unwrap();
+// fn draw_spectrum<DB: DrawingBackend>(
+//     mut chart: ChartBuilder<DB>,
+//     label: &str,
+//     data: &[f32],
+//     sample_rate: usize,
+//     limit: FrequencyLimit,
+// ) {
+//     let spectrum = samples_fft_to_spectrum(
+//         data,
+//         sample_rate as u32,
+//         limit,
+//         Some(&scale_to_zero_to_one),
+//     )
+//     .unwrap();
+//     let mut chart = chart
+//         .margin(10)
+//         .caption(
+//             format!("{} ({}Hz)", label, spectrum.max().0),
+//             ("sans-serif", 22),
+//         )
+//         .x_label_area_size(30)
+//         .y_label_area_size(30)
+//         .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
+//         .unwrap();
 
-    chart
-        .configure_mesh()
-        .x_labels(5)
-        .y_labels(3)
-        // .y_label_style(
-        //     ("sans-serif", 15)
-        //         .into_font()
-        //         .color(&plotters::style::colors::BLACK.mix(0.8))
-        //         .transform(FontTransform::RotateAngle(30.0)),
-        // )
-        .draw()
-        .unwrap();
-    chart
-        .draw_series(LineSeries::new(
-            spectrum.data().iter().map(|(f, x)| (f.val(), x.val())),
-            // (-50..=50)
-            //     .map(|x| x as f32 / 50.0)
-            //     .map(|x| (x, x.powf(power as f32))),
-            &RED,
-        ))
-        .unwrap();
-}
+//     chart
+//         .configure_mesh()
+//         .x_labels(5)
+//         .y_labels(3)
+//         // .y_label_style(
+//         //     ("sans-serif", 15)
+//         //         .into_font()
+//         //         .color(&plotters::style::colors::BLACK.mix(0.8))
+//         //         .transform(FontTransform::RotateAngle(30.0)),
+//         // )
+//         .draw()
+//         .unwrap();
+//     chart
+//         .draw_series(LineSeries::new(
+//             spectrum.data().iter().map(|(f, x)| (f.val(), x.val())),
+//             // (-50..=50)
+//             //     .map(|x| x as f32 / 50.0)
+//             //     .map(|x| (x, x.powf(power as f32))),
+//             &RED,
+//         ))
+//         .unwrap();
+// }

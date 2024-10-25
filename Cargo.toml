@@ -20,12 +20,12 @@ plotters = {version = "0.3.7",default_features = false, features = [
     "point_series",
 ] }
 plotters-iced = "0.10.0"
-rand = "0.8.5"
+# rand = "0.8.5"
 # rand_distr = "0.4.3"
 # rand_mt = "4.2.2"
 rubato = "0.16.0"
-sfmt = "0.7.0"
-spectrum-analyzer = "1.5.0"
+# sfmt = "0.7.0"
+# spectrum-analyzer = "1.5.0"
 
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
@@ -34,6 +34,6 @@ nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
 # atomic_float = "1.1.0"
 # strum = {version="0.26.3", features=["derive"]}
 # strum_macros = "0.26.2"
-rand_mt = "4.2.2"
+# rand_mt = "4.2.2"
 # easyfft = "0.4.1"
 # qd = {git="https://github.com/Barandis/qd"}
