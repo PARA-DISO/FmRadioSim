@@ -411,6 +411,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmake"
+version = "0.1.51"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb1e43aa7fd152b1f968787f7dbcdeb306d1867ff373c69955211876c053f91a"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -837,6 +846,7 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "iced",
+ "libsoxr",
  "nih_plug",
  "plotters",
  "plotters-iced",
@@ -1473,6 +1483,24 @@ dependencies = [
  "bitflags 2.5.0",
  "libc",
  "redox_syscall 0.4.1",
+]
+
+[[package]]
+name = "libsoxr"
+version = "0.2.9"
+source = "git+https://github.com/PARA-DISO/libsoxr-rs.git?branch=include-sys#749eef94470a2d52674c4e4e093f64c8be198c0f"
+dependencies = [
+ "bitflags 2.5.0",
+ "libc",
+ "libsoxr-sys",
+]
+
+[[package]]
+name = "libsoxr-sys"
+version = "0.1.4"
+source = "git+https://github.com/PARA-DISO/libsoxr-rs.git?branch=include-sys#749eef94470a2d52674c4e4e093f64c8be198c0f"
+dependencies = [
+ "cmake",
 ]
 
 [[package]]
@@ -2212,9 +2240,9 @@ checksum = "e8cf8e6a8aa66ce33f63993ffc4ea4271eb5b0530a9002db8455ea6050c77bfa"
 
 [[package]]
 name = "primal-check"
-version = "0.3.3"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9df7f93fd637f083201473dab4fee2db4c429d32e55e3299980ab3957ab916a0"
+checksum = "dc0d895b311e3af9902528fbb8f928688abbd95872819320517cc24ca6b2bd08"
 dependencies = [
  "num-integer",
 ]
@@ -2312,9 +2340,9 @@ dependencies = [
 
 [[package]]
 name = "realfft"
-version = "3.3.0"
+version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "953d9f7e5cdd80963547b456251296efc2626ed4e3cbf36c869d9564e0220571"
+checksum = "390252372b7f2aac8360fc5e72eba10136b166d6faeed97e6d0c8324eb99b2b1"
 dependencies = [
  "rustfft",
 ]

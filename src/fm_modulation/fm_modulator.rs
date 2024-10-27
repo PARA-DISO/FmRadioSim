@@ -3,26 +3,37 @@ use std::f64::consts::TAU;
 use crate::filter::{FilterInfo, Lpf};
 
 mod fm_sys {
-  use std::ffi::c_void;
-  extern "C" {
-    pub fn fm_modulate(
-      output_signal: *mut f64 , input_signal: *const f64,
-      prev_sig: *mut f64, sum: *mut f64,
-      sample_periodic: f64,
-      angle: *mut f64 , modulate_index: f64, fc:f64, buf_len: u64
-    );
-    pub fn fm_demodulate(
-      output_signal: *mut f64, input_signal: *const f64,
-      sample_period: f64, filter_coeff: *const c_void,
-      filter_info: *mut *mut f64, prev: *const f64, angle: *mut f64, carrier_freq: f64, buf_len: u64
-    );
-  }
+    use std::ffi::c_void;
+    extern "C" {
+        pub fn fm_modulate(
+            output_signal: *mut f64,
+            input_signal: *const f64,
+            prev_sig: *mut f64,
+            sum: *mut f64,
+            sample_periodic: f64,
+            angle: *mut f64,
+            modulate_index: f64,
+            fc: f64,
+            buf_len: u64,
+        );
+        pub fn fm_demodulate(
+            output_signal: *mut f64,
+            input_signal: *const f64,
+            sample_period: f64,
+            filter_coeff: *const c_void,
+            filter_info: *mut *mut f64,
+            prev: *const f64,
+            angle: *mut f64,
+            carrier_freq: f64,
+            buf_len: u64,
+        );
+    }
 }
 
 pub struct FmModulator {
     integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
-    t: [f64;4],        // 時刻t
+    t: [f64; 4], // 時刻t
     prev_sig: f64,
     sample_period: f64,
     carrier_freq: f64,
@@ -42,15 +53,15 @@ impl FmModulator {
     //     }
     // }
     pub fn from(f: f64, sample_rate: f64) -> Self {
-      let sample_period = 1. / sample_rate;
+        let sample_period = 1. / sample_rate;
         Self {
             integral: 0.0,
             // t: 0.0,
             t: [
-              0.0,
-              TAU*f*sample_period,
-              TAU*f*sample_period * 2.,
-              TAU*f*sample_period * 3.,
+                0.0,
+                TAU * f * sample_period,
+                TAU * f * sample_period * 2.,
+                TAU * f * sample_period * 3.,
             ],
             prev_sig: 0.0,
             // modulation_index: 47./53.,
@@ -61,24 +72,31 @@ impl FmModulator {
         }
     }
     pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
-        for i in 0..signal.len() {
-            self.integral += if i == 0 {
-                self.prev_sig + signal[i]
-            } else {
-                signal[i - 1] + signal[i]
-            };
-            buffer[i] = (self.t[0]
-                + self.modulation_index * self.sample_period / 2.
-                    * self.integral)
-                .cos();
-            self.t[0] += TAU * self.carrier_freq * self.sample_period;
-        }
-        self.prev_sig = *(signal.last().unwrap());
-        
-        self.t[0] = self.t[0].rem_euclid(TAU);
-        // unsafe {fm_sys::fm_modulate(
-        //   buffer.as_mut_ptr(), signal.as_ptr(),&raw mut self.prev_sig,&raw mut self.integral, self.sample_period, self.t.as_mut_ptr(),self.modulation_index,self.carrier_freq, buffer.len() as u64
-        // )};
+        // for i in 0..signal.len() {
+        //     self.integral += self.prev_sig + signal[i];
+        //     self.prev_sig = signal[i];
+        //     buffer[i] = (self.t[0]
+        //         + self.modulation_index * self.sample_period / 2.
+        //             * self.integral)
+        //         .cos();
+        //     self.t[0] += TAU * self.carrier_freq * self.sample_period;
+        // }
+        // self.prev_sig = *(signal.last().unwrap());
+
+        // self.t[0] = self.t[0].rem_euclid(TAU);
+        unsafe {
+            fm_sys::fm_modulate(
+                buffer.as_mut_ptr(),
+                signal.as_ptr(),
+                &raw mut self.prev_sig,
+                &raw mut self.integral,
+                self.sample_period,
+                self.t.as_mut_ptr(),
+                self.modulation_index,
+                self.carrier_freq,
+                buffer.len() as u64,
+            )
+        };
     }
 }
 pub struct FmDeModulator {

@@ -1,7 +1,7 @@
 #include "./freq_modulation.h"
 #include <math.h>
 #include <stdio.h>
-#include "consts.h"
+
 // TODO: 係数がわたっているのか確認
 // (結果が完全に0になる原因)
 f64 lpf(f64 sig, FilterCoeffs* coeff,FilterInfo info) {
@@ -29,17 +29,30 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
   f64x4 angle = _mm256_load_pd(_angle);
   f64x4 phi = _mm256_set1_pd(TAU*fc*sample_period*4.);
   f64x4 coeff = _mm256_set1_pd(modulate_index * sample_period/2.);
-  double s[4] = {0};
+  // double s[4] = {0,0,0,*sum};
+
   f64 prev = *prev_sig;
   f64 current_sum = *sum;
   for (usize i = 0; i < buf_len; i+=4) {
-    s[0] = prev + input_signal[i];
-    s[1] = s[0] + input_signal[i+1];
-    s[2] = s[1] + input_signal[i+2];
-    s[3] = s[2] + input_signal[i+3];
-    current_sum = s[3];
+    // s[0] = current_sum + prev + input_signal[i];
+    // s[1] = s[0] + input_signal[i]   + input_signal[i+1];
+    // s[2] = s[1] + input_signal[i+1] + input_signal[i+2];
+    // s[3] = s[2] + input_signal[i+2] +input_signal[i+3];
+    // TODO: この計算は間違っている。(そもそも正しい方法ではない)
+    
+    f64x4 in = _mm256_load_pd(input_signal+i);
+    f64x4 sums = _mm256_add_pd(_mm256_set1_pd(current_sum + prev),in);
+    in = _mm256_permute4x64_pd(in,_MM_SHUFFLE(2,1,0,3));
+    sums = _mm256_fmadd_pd(in,_mm256_set_pd(2,2,2,0), sums);
+    in = _mm256_permute4x64_pd(in,_MM_SHUFFLE(2,1,0,3));
+    sums = _mm256_fmadd_pd(in,_mm256_set_pd(2,2,0,0), sums);
+    in = _mm256_permute4x64_pd(in,_MM_SHUFFLE(2,1,0,3));
+    sums = _mm256_fmadd_pd(in,_mm256_set_pd(2,0,0,0), sums);
     prev = input_signal[i+3];
-    f64x4 integral = _mm256_fmadd_pd(coeff,_mm256_load_pd(s),angle);
+    current_sum = sums.m256d_f64[3];
+    // Note:　ここまでの処理は間違い。
+    // f64x4 sums = _mm256_load_pd(s);
+    f64x4 integral = _mm256_fmadd_pd(coeff,sums, angle);
     f64x4 sigs = _mm256_cos_pd(integral);
     _mm256_store_pd(output_signal + i, sigs);
     angle = _mm256_add_pd(angle, phi);
