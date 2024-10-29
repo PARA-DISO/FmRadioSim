@@ -39,6 +39,8 @@ extern "C" {
         carrier_freq: f64,
         buf_len: u64,
     );
+    fn upsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
+    fn downsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
 }
 #[repr(C)]
 pub struct ResamplerInfo {
@@ -62,11 +64,10 @@ impl ResamplerInfo {
     }
   }
 }
-#[link(name="resampler")]
-extern "C" {
-  fn upsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
-  fn downsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
-}
+// #[link(name="resampler")]
+// extern "C" {
+
+// }
 fn main() {
     State::run(Settings {
         antialiasing: true,
@@ -155,7 +156,7 @@ const SIGNAL_MAX_FREQ: f64 = 106_000f64;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
-
+const RENDER_MAX:usize = 10;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
@@ -167,6 +168,7 @@ use libsoxr::{
 use rubato::{FastFixedIn, FastFixedOut, PolynomialDegree, Resampler};
 struct MyChart {
     t: f64,
+    render_times: usize,
     fm_sample_rate: usize,
     // convertor/modulator
     composite: CompositeSignal,
@@ -188,11 +190,12 @@ struct MyChart {
     // down_sampler_to_output: FastFixedOut<f64>,
     // up_sample_to176m: FastFixedIn<f64>,
     // down_sample_to_100k: FastFixedOut<f64>,
-    down_sample_to_100k: ResamplerInfo,
+    
     up_sampler_to100k: [Soxr; 2],
     down_sampler_to_output: [Soxr;2],
     // up_sample_to176m: Soxr,
     up_sample_to176m: ResamplerInfo,
+    down_sample_to_100k: ResamplerInfo,
     // down_sample_to_100k: Soxr,
     continue_flag: bool,
     // transmission_line: transmission_line::TransmissionLine,
@@ -283,9 +286,9 @@ impl MyChart {
             composite_buffer_size,
         );
         let up_sample_to176m = ResamplerInfo::new_upsample_info(COMPOSITE_SAMPLE_RATE, fm_sample_rate, composite_buffer_size);
-        let down_sample_to_100k = ResamplerInfo::new_upsample_info(fm_sample_rate, COMPOSITE_SAMPLE_RATE, modulated_buffer_size);
+        let down_sample_to_100k = ResamplerInfo::new_downsample_info(fm_sample_rate, COMPOSITE_SAMPLE_RATE, modulated_buffer_size);
         // let down_sample_to_100k = Soxr::create(
-        //   fm_sample_rate as f64, COMPOSITE_SAMPLE_RATE as f64, 1,
+        //   fm_sample_rate as f64 / 1000., COMPOSITE_SAMPLE_RATE as f64 / 1000., 1,
         //   Some( &libsoxr::IOSpec::new(Datatype::Float64I,Datatype::Float64I)),
         //   Some( &QualitySpec::new(&QualityRecipe::Quick, QualityFlags::ROLLOFF_NONE)),
         //   None
@@ -349,6 +352,7 @@ impl MyChart {
             (BUFFER_SIZE as f64) / AUDIO_SAMPLE_RATE as f64 * 1000f64
         );
         Self {
+            render_times: 0,
             t: 0.0,
             fm_sample_rate,
             // Modulator
@@ -397,7 +401,7 @@ impl MyChart {
     }
     fn next(&mut self) {
         use std::time::Instant;
-        if self.continue_flag {
+        if self.continue_flag && self.render_times < RENDER_MAX {
             // 信号の作成
             for i in 0..self.input_signal[0].len() {
                 self.input_signal[0][i] =
@@ -536,6 +540,7 @@ impl MyChart {
             println!("  - Down-Sample: {:?}", end_time - lap6);
             // println!("Buffer Size: {}/ Resampled Size: {:?}", self.modulated_signal.len(),vhf_write_size);
             // println!("Finally Buffer Size: {}/ Resampled Size: {:?}", self.output_signal[0].len(),down_sampled_size);
+            self.render_times+=1;
         }
     }
 }

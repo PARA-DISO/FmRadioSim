@@ -145,7 +145,7 @@ impl FmDeModulator {
             // たすき掛け
             let a = d_re * im;
             let b = d_im * re;
-            buffer[i] = a - b;
+            buffer[i] = (a - b) * 2.;
             self.t += TAU * self.carrier_freq * self.sample_period;
         }
         // unsafe {
