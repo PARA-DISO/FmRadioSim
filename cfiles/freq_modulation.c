@@ -4,7 +4,7 @@
 
 // TODO: 係数がわたっているのか確認
 // (結果が完全に0になる原因)
-f64 lpf(f64 sig, FilterCoeffs* coeff,FilterInfo info) {
+inline f64 lpf(f64 sig, FilterCoeffs* coeff,FilterInfo info) {
   const f64 in1 = info[0];
   const f64 in2 = info[1];
   const f64 out1 = info[2];
@@ -18,7 +18,7 @@ f64 lpf(f64 sig, FilterCoeffs* coeff,FilterInfo info) {
   info[3] = out1;
   return buf;
 }
-void differential(f64* dr, f64* di,const f64 r, const f64 i, f64* prev, const f64 sample_period) {
+inline void differential(f64* dr, f64* di,const f64 r, const f64 i, f64* prev, const f64 sample_period) {
   *dr = (r - prev[0]) / sample_period;
   *di = (i - prev[1]) / sample_period;
   prev[0] = r;
@@ -71,26 +71,44 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
   //   *prev_sig = input_signal[i];
   // }
 }
-void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,void* const filter_coeff, FilterInfo filter_info[],f64* prev, f64* const angle,f64 const carrier_freq, const usize buf_len) {
-  FilterCoeffs* const coeff = (FilterCoeffs*) filter_coeff;
+void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
+  FilterCoeffs* const coeff = &info->filter_coeff;
+  FilterInfo* filter_info = info->filter_info;
   // printf("buffer len: %ld\n", buf_len);
+  f64 prev_sin = info->prev_sin;
+  f64 angle = info->angle;
+  f64 prev_a = info->prev_internal[0];
+  f64 prev_b = info->prev_internal[1];
   for (usize i = 0; i < buf_len; i++) {
-    const f64 re = lpf(lpf(-input_signal[i] * sin(*angle),coeff,filter_info[0]),coeff,filter_info[1]);
-    const f64 im = lpf(lpf(input_signal[i] * cos(*angle),coeff,filter_info[2]),coeff,filter_info[3]);
+    f64 sin_val = sin(angle);
+    f64 current_a = lpf(-input_signal[i] * sin_val, coeff,filter_info[0]);
+    f64 current_b = lpf(input_signal[i] * ((sin_val - prev_sin) / (TAU*fc*sample_period)), coeff,filter_info[2]);
+    const f64 re = lpf(
+      prev_a,coeff, filter_info[1]
+    );
+    const f64 im = lpf(
+      prev_b,coeff, filter_info[3]
+    );
     f64 d_re,d_im;
-    differential(&d_re,&d_im,re,im,prev,sample_period);
+    differential(&d_re,&d_im,re,im,info->prev_sig,sample_period);
     f64 a = d_re * im;
     f64 b = d_im * re;
     output_signal[i] = a - b;
-    *angle += TAU * carrier_freq * sample_period;
+    prev_sin =sin_val ;
+    angle += TAU * fc * sample_period;
+    prev_a = current_a;
+    prev_b = current_b;
   }
+  info->angle = fmod(angle,TAU);
+  info->prev_sin = prev_sin;
+  info->prev_internal[0] = prev_a;
+  info->prev_internal[1] = prev_b;
 }
 
 void upsample(f64* dst, f64* input, ResamplerInfo* info) {
   usize len = info->input_len;
   f64 prev = info->prev;
   usize multiplier = info->multiplier;
-  
   f64x4 offset = _mm256_set1_pd(4);
   f64x4 m = _mm256_set1_pd(multiplier);
   // printf("len: %ld / multiplier: %ld\n", len,multiplier);

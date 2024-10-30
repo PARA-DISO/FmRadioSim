@@ -32,37 +32,43 @@ extern "C" {
         output_signal: *mut f64,
         input_signal: *const f64,
         sample_period: f64,
-        filter_coeff: *const c_void,
-        filter_info: *mut *mut f64,
-        prev: *const f64,
-        angle: *mut f64,
         carrier_freq: f64,
+        info: *mut crate::fm_modulator::DemodulationInfo,
         buf_len: u64,
     );
-    fn upsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
-    fn downsample(dst: *mut f64, input: *const f64,info: *mut ResamplerInfo);
+    fn upsample(dst: *mut f64, input: *const f64, info: *mut ResamplerInfo);
+    fn downsample(dst: *mut f64, input: *const f64, info: *mut ResamplerInfo);
 }
 #[repr(C)]
 pub struct ResamplerInfo {
-  prev: f64,
-  multiplier: usize,
-  input_len: usize,
+    prev: f64,
+    multiplier: usize,
+    input_len: usize,
 }
+
 impl ResamplerInfo {
-  pub fn new_upsample_info(src_fs:usize, dst_fs:usize,input_size: usize) -> Self {
-    Self {
-      prev: 0.0,
-      multiplier: dst_fs / src_fs,
-      input_len: input_size,
+    pub fn new_upsample_info(
+        src_fs: usize,
+        dst_fs: usize,
+        input_size: usize,
+    ) -> Self {
+        Self {
+            prev: 0.0,
+            multiplier: dst_fs / src_fs,
+            input_len: input_size,
+        }
     }
-  }
-  pub fn new_downsample_info(src_fs:usize, dst_fs:usize,input_size: usize) -> Self {
-    Self {
-      prev: 0.0,
-      multiplier: src_fs / dst_fs,
-      input_len: input_size,
+    pub fn new_downsample_info(
+        src_fs: usize,
+        dst_fs: usize,
+        input_size: usize,
+    ) -> Self {
+        Self {
+            prev: 0.0,
+            multiplier: src_fs / dst_fs,
+            input_len: input_size,
+        }
     }
-  }
 }
 // #[link(name="resampler")]
 // extern "C" {
@@ -156,7 +162,7 @@ const SIGNAL_MAX_FREQ: f64 = 106_000f64;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
-const RENDER_MAX:usize = 10;
+const RENDER_MAX: usize = 10;
 use fm_modulator::{FmDeModulator, FmModulator};
 
 use composite::{CompositeSignal, RestoredSignal};
@@ -190,9 +196,8 @@ struct MyChart {
     // down_sampler_to_output: FastFixedOut<f64>,
     // up_sample_to176m: FastFixedIn<f64>,
     // down_sample_to_100k: FastFixedOut<f64>,
-    
     up_sampler_to100k: [Soxr; 2],
-    down_sampler_to_output: [Soxr;2],
+    down_sampler_to_output: [Soxr; 2],
     // up_sample_to176m: Soxr,
     up_sample_to176m: ResamplerInfo,
     down_sample_to_100k: ResamplerInfo,
@@ -248,17 +253,36 @@ impl MyChart {
             .unwrap(),
         ];
         let down_sampler_to_output = [
-          Soxr::create(
-            COMPOSITE_SAMPLE_RATE as f64, AUDIO_SAMPLE_RATE as f64,1,
-            Some(&libsoxr::IOSpec::new(Datatype::Float64I,Datatype::Float64I)),
-            Some( &QualitySpec::new(&QualityRecipe::Quick, QualityFlags::ROLLOFF_NONE)),
-            None
-          ).unwrap(), Soxr::create(
-            COMPOSITE_SAMPLE_RATE as f64, AUDIO_SAMPLE_RATE as f64,1,
-            Some(&libsoxr::IOSpec::new(Datatype::Float64I,Datatype::Float64I)),
-            Some( &QualitySpec::new(&QualityRecipe::Quick, QualityFlags::ROLLOFF_NONE)),
-            None
-          ).unwrap(),
+            Soxr::create(
+                COMPOSITE_SAMPLE_RATE as f64,
+                AUDIO_SAMPLE_RATE as f64,
+                1,
+                Some(&libsoxr::IOSpec::new(
+                    Datatype::Float64I,
+                    Datatype::Float64I,
+                )),
+                Some(&QualitySpec::new(
+                    &QualityRecipe::Quick,
+                    QualityFlags::ROLLOFF_NONE,
+                )),
+                None,
+            )
+            .unwrap(),
+            Soxr::create(
+                COMPOSITE_SAMPLE_RATE as f64,
+                AUDIO_SAMPLE_RATE as f64,
+                1,
+                Some(&libsoxr::IOSpec::new(
+                    Datatype::Float64I,
+                    Datatype::Float64I,
+                )),
+                Some(&QualitySpec::new(
+                    &QualityRecipe::Quick,
+                    QualityFlags::ROLLOFF_NONE,
+                )),
+                None,
+            )
+            .unwrap(),
         ];
         // let up_sample_to176m = Soxr::create(
         //     COMPOSITE_SAMPLE_RATE as f64,
@@ -285,15 +309,23 @@ impl MyChart {
             fm_sample_rate,
             composite_buffer_size,
         );
-        let up_sample_to176m = ResamplerInfo::new_upsample_info(COMPOSITE_SAMPLE_RATE, fm_sample_rate, composite_buffer_size);
-        let down_sample_to_100k = ResamplerInfo::new_downsample_info(fm_sample_rate, COMPOSITE_SAMPLE_RATE, modulated_buffer_size);
+        let up_sample_to176m = ResamplerInfo::new_upsample_info(
+            COMPOSITE_SAMPLE_RATE,
+            fm_sample_rate,
+            composite_buffer_size,
+        );
+        let down_sample_to_100k = ResamplerInfo::new_downsample_info(
+            fm_sample_rate,
+            COMPOSITE_SAMPLE_RATE,
+            modulated_buffer_size,
+        );
         // let down_sample_to_100k = Soxr::create(
         //   fm_sample_rate as f64 / 1000., COMPOSITE_SAMPLE_RATE as f64 / 1000., 1,
         //   Some( &libsoxr::IOSpec::new(Datatype::Float64I,Datatype::Float64I)),
         //   Some( &QualitySpec::new(&QualityRecipe::Quick, QualityFlags::ROLLOFF_NONE)),
         //   None
         // ).unwrap();
-       
+
         // let freq_modulation_sample_rate = {
         //   let tmp = (FM_MODULATION_SAMPLE_RATE as f64 /COMPOSITE_SAMPLE_RATE as f64).ceil() as usize;
         //   (((tmp & 0xffff_ffff_ffff_fff8)+ if tmp & 0b111 != 0 {
@@ -457,7 +489,13 @@ impl MyChart {
             //     Some(&self.composite_signal),
             //     &mut self.resampled_composite, // &mut self.demodulated_signal
             // );
-            unsafe {upsample(self.resampled_composite.as_mut_ptr(), self.composite_signal.as_ptr(), &raw mut  self.up_sample_to176m);}
+            unsafe {
+                upsample(
+                    self.resampled_composite.as_mut_ptr(),
+                    self.composite_signal.as_ptr(),
+                    &raw mut self.up_sample_to176m,
+                );
+            }
             let lap2 = timer.elapsed();
             // Modulate
             self.modulator.process_to_buffer(
@@ -477,7 +515,13 @@ impl MyChart {
             //     &mut [&mut self.resampled_demodulate],
             //     None,
             // );
-            unsafe {downsample(self.resampled_demodulate.as_mut_ptr(), self.demodulated_signal.as_ptr(), &raw mut self.down_sample_to_100k);}
+            unsafe {
+                downsample(
+                    self.resampled_demodulate.as_mut_ptr(),
+                    self.demodulated_signal.as_ptr(),
+                    &raw mut self.down_sample_to_100k,
+                );
+            }
             // let _ = self.down_sample_to_100k.process::<f64,f64>(
             //   Some(&self.demodulated_signal),
             //   &mut self.resampled_demodulate
@@ -519,13 +563,13 @@ impl MyChart {
             //     )
             //     .unwrap();
             let _ = self.down_sampler_to_output[0].process(
-              Some(&self.restored_signal[0]),
-            //  Some(&self.resampled_demodulate),
-              &mut self.output_signal[0]
+                Some(&self.restored_signal[0]),
+                //  Some(&self.resampled_demodulate),
+                &mut self.output_signal[0],
             );
             let _ = self.down_sampler_to_output[1].process(
-              Some(&self.restored_signal[1]),
-              &mut self.output_signal[1]
+                Some(&self.restored_signal[1]),
+                &mut self.output_signal[1],
             );
             let end_time = timer.elapsed();
             println!("================================");
@@ -540,7 +584,7 @@ impl MyChart {
             println!("  - Down-Sample: {:?}", end_time - lap6);
             // println!("Buffer Size: {}/ Resampled Size: {:?}", self.modulated_signal.len(),vhf_write_size);
             // println!("Finally Buffer Size: {}/ Resampled Size: {:?}", self.output_signal[0].len(),down_sampled_size);
-            self.render_times+=1;
+            self.render_times += 1;
         }
     }
 }
