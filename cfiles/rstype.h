@@ -1,6 +1,7 @@
 #pragma once
 #include <immintrin.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include "f64consts.h"
 typedef uint16_t u16;
 typedef uint8_t u8;

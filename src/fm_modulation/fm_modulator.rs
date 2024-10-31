@@ -2,6 +2,32 @@ use std::f64::consts::TAU;
 // pub type SampleType = f32;
 use crate::filter::{FilterInfo, Lpf};
 #[repr(C)]
+pub struct CnvFiInfos {
+  angle: f64,
+  prev_sig: f64,
+  filter_coeff: Lpf,
+  filter_info: [FilterInfo; 4],
+}
+impl CnvFiInfos {
+    pub fn new(fs: f64, cut_off: f64) -> Self {
+      Self {
+        angle: Default::default(),
+        prev_sig: Default::default(),
+        filter_coeff: Lpf::new(fs, cut_off, Lpf::Q),
+        filter_info: Default::default(),
+      }
+    }
+}
+pub struct CvtIntermediateFreq {
+  fc1: f64,
+  fc2: f64,
+  sample_periodic: f64,
+  info: CnvFiInfos
+}
+
+
+
+#[repr(C)]
 pub struct DemodulationInfo {
     angle: f64,
     prev_sin: f64,
@@ -44,7 +70,34 @@ mod fm_sys {
             info: *mut crate::fm_modulator::DemodulationInfo,
             buf_len: u64,
         );
+        pub fn convert_intermediate_freq(
+          output_signal: *mut f64,
+          input_signal: *const f64,
+          sample_period: f64,
+          fc: f64, fi: f64,
+          info: *mut crate::fm_modulator::CnvFiInfos, buf_len: usize);
     }
+}
+impl CvtIntermediateFreq {
+  pub fn new(fs: f64, fc1: f64, fc2: f64) -> Self {
+    println!("fs: {}, fc: {}, fi: {}", fs,fc1,fc2);
+    Self {
+      fc1,
+      fc2,
+      sample_periodic: 1./ fs,
+      info: CnvFiInfos::new(fs*2.,fc2 * 1.5)
+    }
+  }
+  pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
+    unsafe {
+      fm_sys::convert_intermediate_freq(
+        dst.as_mut_ptr(),
+        input.as_ptr(),
+        self.sample_periodic,
+        self.fc1, self.fc2,
+        &raw mut self.info, input.len());
+    }
+  }
 }
 
 pub struct FmModulator {

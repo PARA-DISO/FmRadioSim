@@ -71,6 +71,39 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
   //   *prev_sig = input_signal[i];
   // }
 }
+void convert_intermediate_freq(
+  f64 output_signal[], const f64 input_signal[],
+  const f64 sample_period,
+  f64 const fc, f64 const fi,
+  CnvFiInfos* const info, const usize buf_len) {
+    const f64 f = fc - fi;
+    const f64 half_sample_period = sample_period/2.;
+    f64 angle = info->angle;
+    f64 prev = info->prev_sig;
+    bool is_accept = true;
+    for (size_t i = 0, j = 0; i < buf_len; ++i) {
+      // 2倍サンプリング + 中間周波数へ落とす 
+      f64 s1 = 2. * prev * sin(angle);
+      f64 s2 = 2. * ((prev + input_signal[i]) / 2.) * sin(angle + TAU * f * half_sample_period);
+      prev = input_signal[i];
+      s1 = lpf(
+        lpf(s1,&info->filter_coeff,info->filter_info[0]),
+        &info->filter_coeff,info->filter_info[1]
+      );
+      s2 = lpf(
+        lpf(s1,&info->filter_coeff,info->filter_info[0]),
+        &info->filter_coeff,info->filter_info[1]
+      );
+      if(is_accept) {
+        output_signal[j] = s1;
+        ++j;
+      }
+      is_accept ^= true;
+      angle += TAU * f * sample_period;
+    }
+    info->prev_sig = prev;
+    info->angle = fmod(angle,TAU);
+}
 void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
   FilterCoeffs* const coeff = &info->filter_coeff;
   FilterInfo* filter_info = info->filter_info;

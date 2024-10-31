@@ -28,6 +28,12 @@ extern "C" {
         fc: f64,
         buf_len: u64,
     );
+    fn convert_intermediate_freq(
+      output_signal: *mut f64,
+      input_signal: *const f64,
+      sample_period: f64,
+      fc: f64, fi: f64,
+      info: *mut crate::fm_modulator::CnvFiInfos, buf_len: usize);
     fn fm_demodulate(
         output_signal: *mut f64,
         input_signal: *const f64,
@@ -153,9 +159,10 @@ const COMPOSITE_SAMPLE_RATE: usize = 132_300;
 
 // const FM_MODULATION_SAMPLE_RATE: usize = 882_000_000;
 const SIGNAL_FREQ: f64 = 440f64;
-const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
-// const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-const CARRIER_FREQ: f64 = 79_500_000f64;
+// const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
+const FM_MODULATION_SAMPLE_RATE: usize = 264_600_000;
+const CARRIER_FREQ: f64 =      79_500_000f64;
+const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
 const SIGNAL_MAX_FREQ: f64 = 106_000f64;
 // const CARRIER_FREQ: f64 = 79_500_0f64;
 // const CUT_OFF: f64 = 200_000.;
@@ -163,7 +170,7 @@ const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 10;
-use fm_modulator::{FmDeModulator, FmModulator};
+use fm_modulator::*;
 
 use composite::{CompositeSignal, RestoredSignal};
 use libsoxr::{
@@ -181,6 +188,7 @@ struct MyChart {
     restore: RestoredSignal,
     modulator: FmModulator,
     demodulator: FmDeModulator,
+    cvt_intermediate: CvtIntermediateFreq,
     // signals
     input_signal: [Vec<f64>; 2],
     up_sampled_input: [Vec<f64>; 2],
@@ -189,6 +197,7 @@ struct MyChart {
     output_signal: [Vec<f64>; 2],
     resampled_composite: Vec<f64>,
     modulated_signal: Vec<f64>,
+    intermediate: Vec<f64>,
     demodulated_signal: Vec<f64>,
     resampled_demodulate: Vec<f64>,
     // Re-Sampler
@@ -220,6 +229,7 @@ impl MyChart {
                 * COMPOSITE_SAMPLE_RATE)
         };
         println!("fm sample: {fm_sample_rate}");
+        println!("fi / fcompo: {}", (fm_sample_rate >> 1) as f64 / COMPOSITE_SAMPLE_RATE as f64);
         let up_sampler_to100k = [
             Soxr::create(
                 AUDIO_SAMPLE_RATE as f64,
@@ -284,21 +294,6 @@ impl MyChart {
             )
             .unwrap(),
         ];
-        // let up_sample_to176m = Soxr::create(
-        //     COMPOSITE_SAMPLE_RATE as f64,
-        //     fm_sample_rate as f64,
-        //     1,
-        //     Some(&libsoxr::IOSpec::new(
-        //         Datatype::Float64I,
-        //         Datatype::Float64I,
-        //     )),
-        //     Some(&QualitySpec::new(
-        //         &QualityRecipe::Quick,
-        //         QualityFlags::ROLLOFF_NONE,
-        //     )),
-        //     None,
-        // )
-        // .unwrap();
         let composite_buffer_size = get_buffer_size(
             AUDIO_SAMPLE_RATE,
             COMPOSITE_SAMPLE_RATE,
@@ -315,70 +310,15 @@ impl MyChart {
             composite_buffer_size,
         );
         let down_sample_to_100k = ResamplerInfo::new_downsample_info(
-            fm_sample_rate,
+            fm_sample_rate >> 1,
             COMPOSITE_SAMPLE_RATE,
-            modulated_buffer_size,
+            modulated_buffer_size >> 1,
         );
-        // let down_sample_to_100k = Soxr::create(
-        //   fm_sample_rate as f64 / 1000., COMPOSITE_SAMPLE_RATE as f64 / 1000., 1,
-        //   Some( &libsoxr::IOSpec::new(Datatype::Float64I,Datatype::Float64I)),
-        //   Some( &QualitySpec::new(&QualityRecipe::Quick, QualityFlags::ROLLOFF_NONE)),
-        //   None
-        // ).unwrap();
-
-        // let freq_modulation_sample_rate = {
-        //   let tmp = (FM_MODULATION_SAMPLE_RATE as f64 /COMPOSITE_SAMPLE_RATE as f64).ceil() as usize;
-        //   (((tmp & 0xffff_ffff_ffff_fff8)+ if tmp & 0b111 != 0 {
-        //     4
-        //   } else {
-        //     0
-        //   }) * COMPOSITE_SAMPLE_RATE) as f64
-        // };
-        // println!("high fs / middle fs = {} ({}Hz)",freq_modulation_sample_rate  /COMPOSITE_SAMPLE_RATE as f64);
-        // let up_sampler_to100k = FastFixedIn::new(
-        //     COMPOSITE_SAMPLE_RATE as f64 / AUDIO_SAMPLE_RATE as f64,
-        //     1000.,
-        //     PolynomialDegree::Linear,
-        //     BUFFER_SIZE,
-        //     2,
-        // )
-        // .unwrap();
-
-        // let composite_buffer_size =
-        //     dbg!(up_sampler_to100k.output_frames_next());
-        // let up_sample_to176m = FastFixedIn::new(
-        //     FM_MODULATION_SAMPLE_RATE as f64 / COMPOSITE_SAMPLE_RATE as f64,
-        //     10000.,
-        //     PolynomialDegree::Nearest,
-        //     composite_buffer_size,
-        //     1,
-        // )
-        // .unwrap();
-
-        // let modulated_buffer_size = dbg!(up_sample_to176m.output_frames_next());
-        // let modulated_buffer_size = TEST_BUFFER_SIZE;
-
+        
         let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f64);
 
         let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f64);
-        // let down_sampler_to_output = FastFixedOut::new(
-        //     AUDIO_SAMPLE_RATE as f64 / COMPOSITE_SAMPLE_RATE as f64,
-        //     1.,
-        //     PolynomialDegree::Linear,
-        //     BUFFER_SIZE,
-        //     2,
-        // )
-        // .unwrap();
-        // let down_sample_to_100k = FastFixedOut::new(
-        //     COMPOSITE_SAMPLE_RATE as f64 / FM_MODULATION_SAMPLE_RATE as f64,
-        //     1.,
-        //     PolynomialDegree::Nearest,
-        //     composite_buffer_size,
-        //     1,
-        // )
-        // .unwrap();
-        // dbg!(down_sample_to_100k.output_frames_next());
-        // dbg!(down_sampler_to_output.output_frames_next());
+
         println!(
             "Signal time per frame: {}ms",
             (BUFFER_SIZE as f64) / AUDIO_SAMPLE_RATE as f64 * 1000f64
@@ -395,9 +335,15 @@ impl MyChart {
                 FM_MODULATION_SAMPLE_RATE as f64,
             ),
             demodulator: FmDeModulator::from(
-                CARRIER_FREQ,
-                FM_MODULATION_SAMPLE_RATE as f64,
+                // CARRIER_FREQ ,
+                INTERMEDIATE_FREQ,
+                (FM_MODULATION_SAMPLE_RATE >> 1) as f64,
                 SIGNAL_MAX_FREQ,
+            ),
+            cvt_intermediate: CvtIntermediateFreq::new(
+              FM_MODULATION_SAMPLE_RATE as f64,
+              CARRIER_FREQ,
+              INTERMEDIATE_FREQ
             ),
             // Buffer
             input_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
@@ -408,7 +354,8 @@ impl MyChart {
             composite_signal: vec![0.; composite_buffer_size],
             resampled_composite: vec![0.; modulated_buffer_size],
             modulated_signal: vec![0.; modulated_buffer_size],
-            demodulated_signal: vec![0.; modulated_buffer_size],
+            intermediate: vec![0.; modulated_buffer_size >> 1],
+            demodulated_signal: vec![0.; modulated_buffer_size >> 1],
             resampled_demodulate: vec![0.; composite_buffer_size],
             restored_signal: [
                 vec![0.; composite_buffer_size],
@@ -503,12 +450,14 @@ impl MyChart {
                 &mut self.modulated_signal,
             );
             let lap3 = timer.elapsed();
+            self.cvt_intermediate.process(&self.modulated_signal, &mut self.intermediate);
+            let lap4 = timer.elapsed();
             // // de-modulate
             self.demodulator.process_to_buffer(
-                &self.modulated_signal,
+                &self.intermediate,
                 &mut self.demodulated_signal,
             );
-            let lap4 = timer.elapsed();
+            let lap5 = timer.elapsed();
             // down-sample to 100kHz Order
             // let _ = self.down_sample_to_100k.process_into_buffer(
             //     &[&self.demodulated_signal],
@@ -526,7 +475,7 @@ impl MyChart {
             //   Some(&self.demodulated_signal),
             //   &mut self.resampled_demodulate
             // );
-            let lap5 = timer.elapsed();
+            let lap6 = timer.elapsed();
             // restore
             let l_out = unsafe {
                 std::slice::from_raw_parts_mut(
@@ -553,7 +502,7 @@ impl MyChart {
                 l_out,
                 r_out,
             );
-            let lap6 = timer.elapsed();
+            let lap7 = timer.elapsed();
             // let down_sampled_size = self
             //     .down_sampler_to_output
             //     .process_into_buffer(
@@ -578,10 +527,11 @@ impl MyChart {
             println!("  - Composite: {:?}", lap1 - lap0);
             println!("  - Up-Sample: {:?}", lap2 - lap1);
             println!("  - Modulate: {:?}", lap3 - lap2);
-            println!("  - De-Modulate: {:?}", lap4 - lap3);
-            println!("  - Down-Sample: {:?}", lap5 - lap4);
-            println!("  - Restore: {:?}", lap6 - lap5);
-            println!("  - Down-Sample: {:?}", end_time - lap6);
+            println!("  - Cvt-IntermediateFreq: {:?}", lap4 - lap3);
+            println!("  - De-Modulate: {:?}", lap5 - lap4);
+            println!("  - Down-Sample: {:?}", lap6 - lap5);
+            println!("  - Restore: {:?}", lap7 - lap6);
+            println!("  - Down-Sample: {:?}", end_time - lap7);
             // println!("Buffer Size: {}/ Resampled Size: {:?}", self.modulated_signal.len(),vhf_write_size);
             // println!("Finally Buffer Size: {}/ Resampled Size: {:?}", self.output_signal[0].len(),down_sampled_size);
             self.render_times += 1;
@@ -606,11 +556,12 @@ impl Chart<Message> for MyChart {
     ) {
         let children = root.split_evenly((3, 4));
 
-        let labels: [&str; 7] = [
+        let labels: [&str; 8] = [
             "L In",
             "R In",
             "Composite",
             "FM Modulated",
+            "Intermediate",
             "FM Demodulated",
             "L Out",
             "R Out",
@@ -649,18 +600,24 @@ impl Chart<Message> for MyChart {
                     FM_MODULATION_SAMPLE_RATE,
                 ),
                 4 => draw_chart(
+                  builder,
+                  labels[i],
+                  &self.intermediate,
+                  FM_MODULATION_SAMPLE_RATE >> 1,
+                ),
+                5 => draw_chart(
                     builder,
                     labels[i],
                     &self.resampled_demodulate,
-                    FM_MODULATION_SAMPLE_RATE,
+                    COMPOSITE_SAMPLE_RATE,
                 ),
-                5 => draw_chart(
+                6 => draw_chart(
                     builder,
                     labels[i],
                     &self.output_signal[0],
                     AUDIO_SAMPLE_RATE,
                 ),
-                6 => draw_chart(
+                7 => draw_chart(
                     builder,
                     labels[i],
                     &self.output_signal[1],
