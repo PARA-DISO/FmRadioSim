@@ -1,20 +1,21 @@
 use std::f64::consts::TAU;
 // pub type SampleType = f32;
 use crate::filter::{FilterInfo, Lpf};
+
 #[repr(C)]
+#[derive(Default)]
 pub struct CnvFiInfos {
   angle: f64,
   prev_sig: f64,
+  stage: [f64;2],
   filter_coeff: Lpf,
-  filter_info: [FilterInfo; 4],
+  filter_info: [FilterInfo; 5],
 }
 impl CnvFiInfos {
     pub fn new(fs: f64, cut_off: f64) -> Self {
       Self {
-        angle: Default::default(),
-        prev_sig: Default::default(),
         filter_coeff: Lpf::new(fs, cut_off, Lpf::Q),
-        filter_info: Default::default(),
+        ..Default::default()
       }
     }
 }
@@ -28,23 +29,20 @@ pub struct CvtIntermediateFreq {
 
 
 #[repr(C)]
+#[derive(Default)]
 pub struct DemodulationInfo {
     angle: f64,
     prev_sin: f64,
     prev_sig: [f64; 2],
     prev_internal: [f64; 2],
     filter_coeff: Lpf,
-    filter_info: [FilterInfo; 4],
+    filter_info: [FilterInfo; 6],
 }
 impl DemodulationInfo {
     pub fn new(fs: f64, fc: f64) -> Self {
         Self {
-            angle: Default::default(),
-            prev_sin: Default::default(),
-            prev_sig: Default::default(),
-            prev_internal: Default::default(),
             filter_coeff: Lpf::new(fs, fc, Lpf::Q),
-            filter_info: Default::default(),
+            ..Default::default()
         }
     }
 }
@@ -85,7 +83,7 @@ impl CvtIntermediateFreq {
       fc1,
       fc2,
       sample_periodic: 1./ fs,
-      info: CnvFiInfos::new(fs*2.,fc2 * 1.5)
+      info: CnvFiInfos::new(fs*2.,fc2 * 1.2)
     }
   }
   pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
@@ -182,6 +180,7 @@ impl FmDeModulator {
     pub fn from(f: f64, sample_rate: f64, cut_off: f64) -> Self {
         // println!("periodic: {}", (1. / sample_rate));
         // println!("carrier : cutoff = {}",f / cut_off);
+        println!("fs/2fc = {}",sample_rate / f);
         Self {
             // t: 0.0,
             // prev_sig: Default::default(),
@@ -194,59 +193,16 @@ impl FmDeModulator {
         }
     }
     pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
-        // for i in 0..signal.len() {
-        //     let s = signal[i];
-        //     // 複素変換
-        //     let re = self.result_filter.process_without_buffer(
-        //         self.result_filter.process_without_buffer(
-        //             -((s) * (self.t).sin()),
-        //             &mut self.filter_info[0],
-        //         ),
-        //         &mut self.filter_info[1],
-        //     );
-        //     let im = self.result_filter.process_without_buffer(
-        //         self.result_filter.process_without_buffer(
-        //             (s) * (self.t).cos(),
-        //             &mut self.filter_info[2],
-        //         ),
-        //         &mut self.filter_info[3],
-        //     );
 
-        //     // 微分
-        //     let (d_re, d_im) = self.differential(re, im);
-        //     // たすき掛け
-        //     let a = d_re * im;
-        //     let b = d_im * re;
-        //     buffer[i] = (a - b) * 2.;
-        //     self.t += TAU * self.carrier_freq * self.sample_period;
-        // }
         unsafe {
             fm_sys::fm_demodulate(
                 buffer.as_mut_ptr(),
                 signal.as_ptr(),
                 self.sample_period,
-                // &raw const self.result_filter as *const std::ffi::c_void,
-                // self.filter_info.as_mut_ptr() as *mut *mut f64,
-                // self.prev_sig.as_mut_ptr(),
-                // &raw mut self.t,
                 self.carrier_freq,
                 &raw mut self.info,
                 buffer.len() as u64,
             );
         }
-        // self.t = self.t.rem_euclid(TAU);
     }
-    // #[inline(always)]
-    // fn differential(&mut self, r: f64, i: f64) -> (f64, f64) {
-    //     let delta_t = self.sample_period;
-    //     let diff = {
-    //         (
-    //             (r - self.prev_sig[0]) / delta_t,
-    //             (i - self.prev_sig[1]) / delta_t,
-    //         )
-    //     };
-    //     self.prev_sig[0] = r;
-    //     self.prev_sig[1] = i;
-    //     diff
-    // }
 }

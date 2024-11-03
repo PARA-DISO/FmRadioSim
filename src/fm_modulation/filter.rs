@@ -1,6 +1,7 @@
 use std::f64::consts::{FRAC_1_SQRT_2, TAU};
 pub type FilterInfo = [f64; 4];
 #[repr(C)]
+#[derive(Debug,Default)]
 pub struct Lpf {
     c0: f64,
     c1: f64,

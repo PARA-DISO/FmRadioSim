@@ -34,12 +34,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
   f64 prev = *prev_sig;
   f64 current_sum = *sum;
   for (usize i = 0; i < buf_len; i+=4) {
-    // s[0] = current_sum + prev + input_signal[i];
-    // s[1] = s[0] + input_signal[i]   + input_signal[i+1];
-    // s[2] = s[1] + input_signal[i+1] + input_signal[i+2];
-    // s[3] = s[2] + input_signal[i+2] +input_signal[i+3];
-    // TODO: この計算は間違っている。(そもそも正しい方法ではない)
-    
+    // 積分
     f64x4 in = _mm256_load_pd(input_signal+i);
     f64x4 sums = _mm256_add_pd(_mm256_set1_pd(current_sum + prev),in);
     in = _mm256_permute4x64_pd(in,_MM_SHUFFLE(2,1,0,3));
@@ -50,26 +45,15 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
     sums = _mm256_fmadd_pd(in,_mm256_set_pd(2,0,0,0), sums);
     prev = input_signal[i+3];
     current_sum = sums.m256d_f64[3];
-    // Note:　ここまでの処理は間違い。
-    // f64x4 sums = _mm256_load_pd(s);
     f64x4 integral = _mm256_fmadd_pd(coeff,sums, angle);
+    // 変調
     f64x4 sigs = _mm256_cos_pd(integral);
     _mm256_store_pd(output_signal + i, sigs);
     angle = _mm256_add_pd(angle, phi);
-    // output_signal[i] = cos(*angle + (modulate_index * sample_period/2. * *sum));
-    // *angle += TAU * fc * sample_period;
-    // *prev_sig = input_signal[i];
-    
   }
   _mm256_store_pd(_angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
   *sum = current_sum;
   *prev_sig = prev;
-  // for (usize i = 0; i < buf_len; i++) {
-  //   *sum += *prev_sig + input_signal[i];
-  //   output_signal[i] = cos(*angle + (modulate_index * sample_period/2. * *sum));
-  //   *angle += TAU * fc * sample_period;
-  //   *prev_sig = input_signal[i];
-  // }
 }
 void convert_intermediate_freq(
   f64 output_signal[], const f64 input_signal[],
@@ -80,27 +64,32 @@ void convert_intermediate_freq(
     const f64 half_sample_period = sample_period/2.;
     f64 angle = info->angle;
     f64 prev = info->prev_sig;
-    bool is_accept = true;
-    for (size_t i = 0, j = 0; i < buf_len; ++i) {
+    // bool is_accept = true;
+    usize i,j;
+    for (i = 0, j = 0; i < buf_len; ++i) {
       // 2倍サンプリング + 中間周波数へ落とす 
-      f64 s1 = 2. * prev * sin(angle);
-      f64 s2 = 2. * ((prev + input_signal[i]) / 2.) * sin(angle + TAU * f * half_sample_period);
+      f64 s1 = 2. * prev * cos(angle);
+      f64 s2 = 2. * ((prev + input_signal[i]) / 2.) * cos(angle + TAU * f * half_sample_period);
       prev = input_signal[i];
       s1 = lpf(
         lpf(s1,&info->filter_coeff,info->filter_info[0]),
         &info->filter_coeff,info->filter_info[1]
       );
       s2 = lpf(
-        lpf(s1,&info->filter_coeff,info->filter_info[0]),
+        lpf(s2,&info->filter_coeff,info->filter_info[0]),
         &info->filter_coeff,info->filter_info[1]
       );
-      if(is_accept) {
+      // ダウンサンプリング
+      if(!(i & 0b11)) {
         output_signal[j] = s1;
         ++j;
       }
-      is_accept ^= true;
+      // output_signal[j] = (s1);
+      // ++j;
+      // is_accept ^= true;
       angle += TAU * f * sample_period;
     }
+    printf("i: %ld,j:%ld\n", i,j);
     info->prev_sig = prev;
     info->angle = fmod(angle,TAU);
 }
@@ -113,9 +102,11 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   f64 prev_a = info->prev_internal[0];
   f64 prev_b = info->prev_internal[1];
   for (usize i = 0; i < buf_len; i++) {
-    f64 sin_val = sin(angle);
-    f64 current_a = lpf(-input_signal[i] * sin_val, coeff,filter_info[0]);
-    f64 current_b = lpf(input_signal[i] * ((sin_val - prev_sin) / (TAU*fc*sample_period)), coeff,filter_info[2]);
+    const f64 sin_val = sin(angle);
+    // const f64 cos_val = cos(angle); //((sin_val - prev_sin) / (TAU*fc*sample_period))
+    const f64 cos_val = ((sin_val - prev_sin) / (TAU*fc*sample_period));
+    const f64 current_a = lpf(-2 * input_signal[i] * sin_val, coeff,filter_info[0]);
+    const f64 current_b = lpf(2 * input_signal[i] * cos_val, coeff,filter_info[2]);
     const f64 re = lpf(
       prev_a,coeff, filter_info[1]
     );
@@ -127,6 +118,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     f64 a = d_re * im;
     f64 b = d_im * re;
     output_signal[i] = a - b;
+    // output_signal[i] = re;
     prev_sin =sin_val ;
     angle += TAU * fc * sample_period;
     prev_a = current_a;

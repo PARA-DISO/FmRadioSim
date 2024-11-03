@@ -16,8 +16,9 @@ typedef struct {
 typedef struct {
   f64 angle;
   f64 prev_sig;
+  f64 stage[2];
   FilterCoeffs filter_coeff;
-  FilterInfo filter_info[4];
+  FilterInfo filter_info[5];
 } CnvFiInfos;
 typedef struct {
   f64 angle;
@@ -25,7 +26,7 @@ typedef struct {
   f64 prev_sig[2];
   f64 prev_internal[2];
   FilterCoeffs filter_coeff;
-  FilterInfo filter_info[4];
+  FilterInfo filter_info[6];
 } DemodulationInfo;
 // #define TAU 2.0 * M_PI
 void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_sig,f64* const sum, const f64 sample_periodic, f64* const _angle, const f64 modulate_index, const f64 fc, usize const buf_len);
