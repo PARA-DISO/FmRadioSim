@@ -7,6 +7,12 @@ inline f64 fast_lpf(f64 sig, f64 coeff, f64* prev) {
   *prev = s;
   return s;
 }
+inline f64x4 fast_lpfx4(f64x4 sig, f64x4 coeff, f64x4* prev) {
+ f64x4 s = _mm256_sub_pd(sig,*prev);
+ s = _mm256_fmadd_pd(s,coeff,*prev);
+  *prev = s;
+  return s;
+}
 // inline f64 fast_3xlpf(f64 sig, f64 coeff, f64* prev) {
 //   f64 s1 = coeff * (sig - prev[0]) + prev[0];
 //   f64 s2 = coeff * (s1  - prev[1]) + prev[1];
@@ -79,48 +85,48 @@ void convert_intermediate_freq(
     f64 angle = info->angle;
     f64 prev = info->prev_sig;
     // stage: stage num - sig num
-    f64 stage11 = info->stage[0];
-    f64 stage12 = info->stage[1];
-    f64 stage13 = info->stage[2];
-    f64 stage21 = info->stage[3];
-    f64 stage22 = info->stage[4];
-    f64 stage23 = info->stage[5];
+    f64x4 stage1 = _mm256_load_pd(info->stage);
+    f64x4 stage2 = _mm256_load_pd(info->stage+4);
+    const f64x4 coeff  = _mm256_set1_pd(info->filter_coeff);
+    const f64x4 filter_info = _mm256_load_pd(info->filter_info);
+    // f64 stage11 = info->stage[0];
+    // f64 stage12 = info->stage[1];
+    // f64 stage13 = info->stage[2];
+    // f64 stage21 = info->stage[3];
+    // f64 stage22 = info->stage[4];
+    // f64 stage23 = info->stage[5];
     // bool is_accept = true;
     usize i,j;
     for (i = 0, j = 0; i < buf_len; ++i) {
-      // 2倍サンプリング + 中間周波数へ落とす 
-      f64 s1 = 16. * prev * cos(angle);
-      f64 s2 = 16. * ((prev + input_signal[i]) / 2.) * cos(angle + TAU * f * half_sample_period);
+      // 2倍サンプリング + 中間周波数へ落とす
+     
+      stage1.m256d_f64[0] = 4. * prev * cos(angle);
+      stage2.m256d_f64[0] = 4. * ((prev + input_signal[i]) / 2.) * cos(angle + TAU * f * half_sample_period);
       prev = input_signal[i];
       // 高周波成分の除去
-           s1 = fast_lpf(     s1,info->filter_coeff,&info->filter_info[0]);
-      f64 s11 = fast_lpf(stage11,info->filter_coeff,&info->filter_info[1]);
-      f64 s12 = fast_lpf(stage12,info->filter_coeff,&info->filter_info[2]);
-      f64 sig = fast_lpf(stage13,info->filter_coeff,&info->filter_info[3]);
-           s2 = fast_lpf(     s2, info->filter_coeff, &info->filter_info[0]);
-      f64 s21 = fast_lpf(stage21, info->filter_coeff, &info->filter_info[1]);
-      f64 s22 = fast_lpf(stage22, info->filter_coeff, &info->filter_info[2]);
-      f64   _ = fast_lpf(stage23, info->filter_coeff, &info->filter_info[3]);
-      stage11 = s1;
-      stage12 = s11;
-      stage13 = s12;
-      stage21 = s2;
-      stage22 = s21;
-      stage23 = s22;
+      //      s1 = fast_lpf(     s1,info->filter_coeff,&info->filter_info[0]);
+      // f64 s11 = fast_lpf(stage11,info->filter_coeff,&info->filter_info[1]);
+      // f64 s12 = fast_lpf(stage12,info->filter_coeff,&info->filter_info[2]);
+      // f64 sig = fast_lpf(stage13,info->filter_coeff,&info->filter_info[3]);
+      f64x4 sig1x4 = fast_lpfx4(stage1,coeff,&filter_info);
+      f64x4 sig2x4 = fast_lpfx4(stage2,coeff,&filter_info);
+      //      s2 = fast_lpf(     s2, info->filter_coeff, &info->filter_info[0]);
+      // f64 s21 = fast_lpf(stage21, info->filter_coeff, &info->filter_info[1]);
+      // f64 s22 = fast_lpf(stage22, info->filter_coeff, &info->filter_info[2]);
+      // f64   _ = fast_lpf(stage23, info->filter_coeff, &info->filter_info[3]);
+      stage1 = _mm256_permute4x64_pd(stage1, _MM_SHUFFLE(2,1,0,3));
+      stage2 = _mm256_permute4x64_pd(stage2, _MM_SHUFFLE(2,1,0,3));
       // ダウンサンプリング
       if(!(i & 0b11)) {
-        output_signal[i>> 2] = sig ;
+        output_signal[i>> 2] = 2*stage1.m256d_f64[0] ;
       }
       angle += TAU * f * sample_period;
     }
     info->prev_sig = prev;
     info->angle = fmod(angle,TAU);
-    info->stage[0] = stage11;
-    info->stage[1] = stage12;
-    info->stage[2] = stage13;
-    info->stage[3] = stage21;
-    info->stage[4] = stage22;
-    info->stage[5] = stage23;
+    _mm256_store_pd(info->stage,stage1);
+    _mm256_store_pd(info->stage+4,stage2);
+    _mm256_store_pd(info->filter_info,filter_info);
 }
 void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
   FilterCoeffs* const coeff = &info->filter_coeff;

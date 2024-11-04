@@ -7,7 +7,7 @@ use crate::filter::{FilterInfo, Lpf,fast_filter};
 pub struct CnvFiInfos {
   angle: f64,
   prev_sig: f64,
-  stage: [f64;6],
+  stage: [f64;8],
   filter_coeff: f64,
   filter_info: [f64;4],
 }
