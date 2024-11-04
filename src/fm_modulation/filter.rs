@@ -1,5 +1,6 @@
 use std::f64::consts::{FRAC_1_SQRT_2, TAU};
 pub type FilterInfo = [f64; 4];
+
 #[repr(C)]
 #[derive(Debug,Default)]
 pub struct Lpf {
@@ -303,4 +304,13 @@ impl Deemphasis {
         *info = [signal, *in1, buf, *out1];
         buf
     }
+}
+
+pub mod fast_filter {
+  pub fn get_lpf_coeff(fs: f64, fc: f64) -> f64 {
+    let rc = 1.0 / (fc * 2.0 * core::f64::consts::PI);
+    // time per sample
+    let dt = 1.0 / fs;
+    dt / (rc + dt)
+  }
 }

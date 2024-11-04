@@ -16,9 +16,9 @@ typedef struct {
 typedef struct {
   f64 angle;
   f64 prev_sig;
-  f64 stage[2];
-  FilterCoeffs filter_coeff;
-  FilterInfo filter_info[5];
+  f64 stage[6];
+  f64 filter_coeff;
+  f64 filter_info[4];
 } CnvFiInfos;
 typedef struct {
   f64 angle;

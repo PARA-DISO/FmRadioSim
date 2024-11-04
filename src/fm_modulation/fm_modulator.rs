@@ -1,20 +1,20 @@
 use std::f64::consts::TAU;
 // pub type SampleType = f32;
-use crate::filter::{FilterInfo, Lpf};
+use crate::filter::{FilterInfo, Lpf,fast_filter};
 
 #[repr(C)]
 #[derive(Default)]
 pub struct CnvFiInfos {
   angle: f64,
   prev_sig: f64,
-  stage: [f64;2],
-  filter_coeff: Lpf,
-  filter_info: [FilterInfo; 5],
+  stage: [f64;6],
+  filter_coeff: f64,
+  filter_info: [f64;4],
 }
 impl CnvFiInfos {
     pub fn new(fs: f64, cut_off: f64) -> Self {
       Self {
-        filter_coeff: Lpf::new(fs, cut_off, Lpf::Q),
+        filter_coeff: fast_filter::get_lpf_coeff(fs, cut_off),
         ..Default::default()
       }
     }
@@ -83,7 +83,7 @@ impl CvtIntermediateFreq {
       fc1,
       fc2,
       sample_periodic: 1./ fs,
-      info: CnvFiInfos::new(fs*2.,fc2 * 1.2)
+      info: CnvFiInfos::new(fs*2.,fc2)
     }
   }
   pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {

@@ -2,6 +2,20 @@
 #include <math.h>
 #include <stdio.h>
 
+inline f64 fast_lpf(f64 sig, f64 coeff, f64* prev) {
+  f64 s = *prev + coeff * (sig - *prev);
+  *prev = s;
+  return s;
+}
+// inline f64 fast_3xlpf(f64 sig, f64 coeff, f64* prev) {
+//   f64 s1 = coeff * (sig - prev[0]) + prev[0];
+//   f64 s2 = coeff * (s1  - prev[1]) + prev[1];
+//   f64 s3 = coeff * (s2  - prev[2]) + prev[2];
+//   prev[0] = s1;
+//   prev[1] = s2;
+//   prev[2] = s3;
+//   return s3;
+// }
 // TODO: 係数がわたっているのか確認
 // (結果が完全に0になる原因)
 inline f64 lpf(f64 sig, FilterCoeffs* coeff,FilterInfo info) {
@@ -64,34 +78,49 @@ void convert_intermediate_freq(
     const f64 half_sample_period = sample_period/2.;
     f64 angle = info->angle;
     f64 prev = info->prev_sig;
+    // stage: stage num - sig num
+    f64 stage11 = info->stage[0];
+    f64 stage12 = info->stage[1];
+    f64 stage13 = info->stage[2];
+    f64 stage21 = info->stage[3];
+    f64 stage22 = info->stage[4];
+    f64 stage23 = info->stage[5];
     // bool is_accept = true;
     usize i,j;
     for (i = 0, j = 0; i < buf_len; ++i) {
       // 2倍サンプリング + 中間周波数へ落とす 
-      f64 s1 = 2. * prev * cos(angle);
-      f64 s2 = 2. * ((prev + input_signal[i]) / 2.) * cos(angle + TAU * f * half_sample_period);
+      f64 s1 = 16. * prev * cos(angle);
+      f64 s2 = 16. * ((prev + input_signal[i]) / 2.) * cos(angle + TAU * f * half_sample_period);
       prev = input_signal[i];
-      s1 = lpf(
-        lpf(s1,&info->filter_coeff,info->filter_info[0]),
-        &info->filter_coeff,info->filter_info[1]
-      );
-      s2 = lpf(
-        lpf(s2,&info->filter_coeff,info->filter_info[0]),
-        &info->filter_coeff,info->filter_info[1]
-      );
+      // 高周波成分の除去
+           s1 = fast_lpf(     s1,info->filter_coeff,&info->filter_info[0]);
+      f64 s11 = fast_lpf(stage11,info->filter_coeff,&info->filter_info[1]);
+      f64 s12 = fast_lpf(stage12,info->filter_coeff,&info->filter_info[2]);
+      f64 sig = fast_lpf(stage13,info->filter_coeff,&info->filter_info[3]);
+           s2 = fast_lpf(     s2, info->filter_coeff, &info->filter_info[0]);
+      f64 s21 = fast_lpf(stage21, info->filter_coeff, &info->filter_info[1]);
+      f64 s22 = fast_lpf(stage22, info->filter_coeff, &info->filter_info[2]);
+      f64   _ = fast_lpf(stage23, info->filter_coeff, &info->filter_info[3]);
+      stage11 = s1;
+      stage12 = s11;
+      stage13 = s12;
+      stage21 = s2;
+      stage22 = s21;
+      stage23 = s22;
       // ダウンサンプリング
       if(!(i & 0b11)) {
-        output_signal[j] = s1;
-        ++j;
+        output_signal[i>> 2] = sig ;
       }
-      // output_signal[j] = (s1);
-      // ++j;
-      // is_accept ^= true;
       angle += TAU * f * sample_period;
     }
-    printf("i: %ld,j:%ld\n", i,j);
     info->prev_sig = prev;
     info->angle = fmod(angle,TAU);
+    info->stage[0] = stage11;
+    info->stage[1] = stage12;
+    info->stage[2] = stage13;
+    info->stage[3] = stage21;
+    info->stage[4] = stage22;
+    info->stage[5] = stage23;
 }
 void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
   FilterCoeffs* const coeff = &info->filter_coeff;
