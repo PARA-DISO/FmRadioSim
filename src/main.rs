@@ -29,11 +29,14 @@ extern "C" {
         buf_len: u64,
     );
     fn convert_intermediate_freq(
-      output_signal: *mut f64,
-      input_signal: *const f64,
-      sample_period: f64,
-      fc: f64, fi: f64,
-      info: *mut crate::fm_modulator::CnvFiInfos, buf_len: usize);
+        output_signal: *mut f64,
+        input_signal: *const f64,
+        sample_period: f64,
+        fc: f64,
+        fi: f64,
+        info: *mut crate::fm_modulator::CnvFiInfos,
+        buf_len: usize,
+    );
     fn fm_demodulate(
         output_signal: *mut f64,
         input_signal: *const f64,
@@ -161,10 +164,10 @@ const COMPOSITE_SAMPLE_RATE: usize = 132_300;
 const SIGNAL_FREQ: f64 = 440f64;
 // const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
 const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-const CARRIER_FREQ: f64 =                 79_500_000f64;
-const INTERMEDIATE_FREQ: f64 =            10_700_000f64;
+const CARRIER_FREQ: f64 = 79_500_000f64;
+const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
 const SIGNAL_MAX_FREQ: f64 = 53_000f64;
-const RATIO_FS_INTER_FS:usize = 4;
+const RATIO_FS_INTER_FS: usize = 4;
 // const CARRIER_FREQ: f64 = 44_000f64;
 // const INTERMEDIATE_FREQ: f64 = 440f64;
 // const CUT_OFF: f64 = 200_000.;
@@ -174,6 +177,8 @@ const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 10;
+// is modulate audio sig
+const DISABLE_AUDIO_INPUT: bool = false;
 use fm_modulator::*;
 
 use composite::{CompositeSignal, RestoredSignal};
@@ -187,6 +192,7 @@ struct MyChart {
     t: f64,
     render_times: usize,
     fm_sample_rate: usize,
+    disable_audio_in: bool,
     // convertor/modulator
     composite: CompositeSignal,
     restore: RestoredSignal,
@@ -224,11 +230,17 @@ impl MyChart {
             "fs/fc: {}",
             FM_MODULATION_SAMPLE_RATE as f32 / CARRIER_FREQ as f32
         );
-        let fm_sample_rate = get_8x_sample_rate(FM_MODULATION_SAMPLE_RATE,COMPOSITE_SAMPLE_RATE);
+        let fm_sample_rate = get_8x_sample_rate(
+            FM_MODULATION_SAMPLE_RATE,
+            COMPOSITE_SAMPLE_RATE,
+        );
         let intermediate_fs = fm_sample_rate / RATIO_FS_INTER_FS;
-        
+
         println!("fm sample: {fm_sample_rate}");
-        println!("fi / fcompo: {}", intermediate_fs as f64 / COMPOSITE_SAMPLE_RATE as f64);
+        println!(
+            "fi / fcompo: {}",
+            intermediate_fs as f64 / COMPOSITE_SAMPLE_RATE as f64
+        );
         let up_sampler_to100k = [
             Soxr::create(
                 AUDIO_SAMPLE_RATE as f64,
@@ -316,7 +328,7 @@ impl MyChart {
             intermediate_buf_size,
             // modulated_buffer_size,
         );
-        
+
         let composite = CompositeSignal::new(COMPOSITE_SAMPLE_RATE as f64);
 
         let restore = RestoredSignal::new(COMPOSITE_SAMPLE_RATE as f64);
@@ -328,14 +340,12 @@ impl MyChart {
         Self {
             render_times: 0,
             t: 0.0,
+            disable_audio_in: DISABLE_AUDIO_INPUT,
             fm_sample_rate,
             // Modulator
             composite,
             restore,
-            modulator: FmModulator::from(
-                CARRIER_FREQ,
-                fm_sample_rate as f64,
-            ),
+            modulator: FmModulator::from(CARRIER_FREQ, fm_sample_rate as f64),
             demodulator: FmDeModulator::from(
                 // CARRIER_FREQ ,
                 INTERMEDIATE_FREQ,
@@ -345,9 +355,9 @@ impl MyChart {
                 // INTERMEDIATE_FREQ /4.
             ),
             cvt_intermediate: CvtIntermediateFreq::new(
-              fm_sample_rate as f64,
-              CARRIER_FREQ,
-              INTERMEDIATE_FREQ
+                fm_sample_rate as f64,
+                CARRIER_FREQ,
+                INTERMEDIATE_FREQ,
             ),
             // Buffer
             input_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
@@ -414,7 +424,7 @@ impl MyChart {
                 .process::<f64, f64>(
                     Some(&self.input_signal[0]),
                     &mut self.up_sampled_input[0], // &mut self.composite_signal
-                    // &mut self.composite_signal
+                                                   // &mut self.composite_signal
                 );
             let right_upsample_info = self.up_sampler_to100k[1]
                 .process::<f64, f64>(
@@ -434,13 +444,16 @@ impl MyChart {
             );
             let lap1 = timer.elapsed();
             // up-sample to MHz Order
-            unsafe {
+            if !self.disable_audio_in {
+              unsafe {
                 upsample(
                     self.resampled_composite.as_mut_ptr(),
                     self.composite_signal.as_ptr(),
                     &raw mut self.up_sample_to176m,
                 );
+              }
             }
+            
             let lap2 = timer.elapsed();
             // Modulate
             self.modulator.process_to_buffer(
@@ -448,10 +461,15 @@ impl MyChart {
                 &mut self.modulated_signal,
             );
             let lap3 = timer.elapsed();
-            self.cvt_intermediate.process(&self.modulated_signal, &mut self.intermediate);
+            self.cvt_intermediate
+                .process(&self.modulated_signal, &mut self.intermediate);
             let lap4 = timer.elapsed();
             // // de-modulate
-            println!("in: {}, out:{}",self.intermediate.len(),self.demodulated_signal.len());
+            println!(
+                "in: {}, out:{}",
+                self.intermediate.len(),
+                self.demodulated_signal.len()
+            );
             self.demodulator.process_to_buffer(
                 &self.intermediate,
                 &mut self.demodulated_signal,
@@ -582,10 +600,10 @@ impl Chart<Message> for MyChart {
                     FM_MODULATION_SAMPLE_RATE,
                 ),
                 4 => draw_chart(
-                  builder,
-                  labels[i],
-                  &self.intermediate,
-                  FM_MODULATION_SAMPLE_RATE >> 1,
+                    builder,
+                    labels[i],
+                    &self.intermediate,
+                    FM_MODULATION_SAMPLE_RATE >> 1,
                 ),
                 5 => draw_chart(
                     builder,
