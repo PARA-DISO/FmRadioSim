@@ -176,7 +176,7 @@ const RATIO_FS_INTER_FS: usize = 4;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 10;
+const RENDER_MAX: usize = 3;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
 use fm_modulator::*;
@@ -445,15 +445,15 @@ impl MyChart {
             let lap1 = timer.elapsed();
             // up-sample to MHz Order
             if !self.disable_audio_in {
-              unsafe {
-                upsample(
-                    self.resampled_composite.as_mut_ptr(),
-                    self.composite_signal.as_ptr(),
-                    &raw mut self.up_sample_to176m,
-                );
-              }
+                unsafe {
+                    upsample(
+                        self.resampled_composite.as_mut_ptr(),
+                        self.composite_signal.as_ptr(),
+                        &raw mut self.up_sample_to176m,
+                    );
+                }
             }
-            
+
             let lap2 = timer.elapsed();
             // Modulate
             self.modulator.process_to_buffer(
@@ -608,7 +608,7 @@ impl Chart<Message> for MyChart {
                 5 => draw_chart(
                     builder,
                     labels[i],
-                    &self.resampled_demodulate,
+                    &self.demodulated_signal,
                     COMPOSITE_SAMPLE_RATE,
                 ),
                 6 => draw_chart(

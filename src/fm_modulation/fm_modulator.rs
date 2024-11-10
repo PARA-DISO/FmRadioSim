@@ -8,7 +8,7 @@ pub struct CnvFiInfos {
     angle: [f64; 4],
     delta_angle: f64,
     prev_sig: [f64; 4],
-    prev_cos: [f64;4],
+    prev_cos: [f64; 4],
     stage: [f64; 8],
     filter_coeff: f64,
     filter_info: [f64; 8],
@@ -33,17 +33,20 @@ pub struct CvtIntermediateFreq {
 #[repr(C)]
 #[derive(Default)]
 pub struct DemodulationInfo {
-    angle: f64,
-    prev_sin: f64,
-    prev_sig: [f64; 2],
-    prev_internal: [f64; 2],
-    filter_coeff: Lpf,
-    filter_info: [FilterInfo; 6],
+    angle: [f64; 4],
+    prev_sin: [f64; 4],
+    prev_sig: [f64; 8],
+    prev_internal: [f64; 8],
+    filter_coeff: f64,
+    filter_info: [f64; 4],
 }
 impl DemodulationInfo {
-    pub fn new(fs: f64, fc: f64) -> Self {
+    pub fn new(fs: f64, fc:f64 , cutoff: f64) -> Self {
+        let delta_angle = dbg!(TAU * dbg!(fc) * (1. / fs));
         Self {
-            filter_coeff: Lpf::new(fs, fc, Lpf::Q),
+            angle: [0., delta_angle, 2. * delta_angle, 3. * delta_angle],
+            // filter_coeff: Lpf::new(fs, fc, Lpf::Q),
+            filter_coeff: fast_filter::get_lpf_coeff(fs, cutoff),
             ..Default::default()
         }
     }
@@ -88,7 +91,11 @@ impl CvtIntermediateFreq {
             fc1,
             fc2,
             sample_periodic: 1. / fs,
-            info: CnvFiInfos::new(fs * 2., 1. / fs * TAU * (dbg!(fc1 - fc2)), fc2),
+            info: CnvFiInfos::new(
+                fs * 2.,
+                1. / fs * TAU * (dbg!(fc1 - fc2)),
+                fc2,
+            ),
         }
     }
     pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
@@ -192,7 +199,7 @@ impl FmDeModulator {
         Self {
             // t: 0.0,
             // prev_sig: Default::default(),
-            info: DemodulationInfo::new(f, cut_off),
+            info: DemodulationInfo::new(sample_rate, f,cut_off),
             // sample_rate,
             sample_period: (1. / sample_rate),
             carrier_freq: f,
