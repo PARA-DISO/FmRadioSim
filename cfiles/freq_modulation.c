@@ -171,7 +171,7 @@ void convert_intermediate_freq(
       }
       // ダウンサンプリング
       // output_signal[i >> 2] = 2 * _mm256_cvtsd_f64(stage1) ;
-      output_signal[i >> 2] = 8 * t0;
+      output_signal[i >> 2] = 4 * t0;
       // output_signal[i >> 2] =  _mm256_cvtsd_f64(sig_a);
     }
     _mm256_store_pd(info->prev_sig, prev);
@@ -228,8 +228,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   f64x4 differential_coeff = _mm256_set1_pd(1 / (TAU*fc*sample_period));
   f64x4 prev_sig_lo = _mm256_load_pd(info->prev_sig);
   f64x4 prev_sig_hi = _mm256_load_pd(info->prev_sig + 4);
-  f64x4 prev_sig_internal_lo = _mm256_load_pd(info->prev_internal);
-  f64x4 prev_sig_internal_hi = _mm256_load_pd(info->prev_internal+4);
+  f64x4 prev_sig_internal_lo = _mm256_load_pd(info->prev_internal); // 0 0 2 2
+  f64x4 prev_sig_internal_hi = _mm256_load_pd(info->prev_internal+4); // 1 1 3 3
   f64x4 filter_prev = _mm256_load_pd(info->filter_info);
   f64x4 filter_coeff = _mm256_set1_pd(info->filter_coeff);
   f64x4 d_coeff = _mm256_set1_pd(1/sample_period);
@@ -237,12 +237,12 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   for (usize i = 0; i < buf_len; i+=4) {
     // Removing Carrier
     f64x4 sin_val = _mm256_sin_pd(angle);
-    prev_sin = _mm256_blend_pd(sin_val,prev_sin,0b1110);
-    prev_sin = _mm256_rol_pd(prev_sin);
+    prev_sin = _mm256_blend_pd(sin_val,prev_sin,0b1000);
+    prev_sin = _mm256_ror_pd(prev_sin);
     f64x4 cos_val = _mm256_mul_pd(_mm256_sub_pd(sin_val,prev_sin),differential_coeff);
     f64x4 sig = _mm256_load_pd(input_signal+i);
-    f64x4 sig1 = _mm256_mul_pd(sig,sin_val);
-    f64x4 sig2 = _mm256_mul_pd(sig,cos_val);
+    f64x4 sig1 = _mm256_mul_pd(_mm256_set1_pd(-1),_mm256_mul_pd(sig,sin_val));
+    f64x4 sig2 = _mm256_mul_pd(_mm256_set1_pd(1),_mm256_mul_pd(sig,cos_val));
     angle = _mm256_add_pd(angle,delta_angle);
     angle = _mm256_fmod_pd(angle,_mm256_set1_pd(TAU));
     f64x4 prev_sin_tmp = prev_sin;
@@ -280,17 +280,21 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     // prev_sig_internal_lo = _mm256_rol_pd(prev_sig_internal_lo);
     // prev_sig_internal_hi = _mm256_blend_pd(prev_sig_internal_hi,sig_hi,0b0001);
     // prev_sig_internal_hi = _mm256_rol_pd(prev_sig_internal_hi);
-    f64x4 dsig_l = _mm256_mul_pd(_mm256_sub_pd(sig_lo,prev_sig_internal_lo),d_coeff);
-    f64x4 dsig_h = _mm256_mul_pd(_mm256_sub_pd(sig_hi,prev_sig_internal_hi),d_coeff);
-    _mm256_store_pd(output_signal+i,dsig_l);
+    prev_sig_internal_lo = _mm256_blend_pd(s_hi,prev_sig_internal_hi,0b1100);
+    prev_sig_internal_lo = _mm256_permute2f128_pd(prev_sig_internal_lo,prev_sig_internal_lo,0x01);
+    f64x4 dsig_l = _mm256_mul_pd(_mm256_sub_pd(s_lo,prev_sig_internal_lo),d_coeff); // 0 0 2 2
+    f64x4 dsig_h = _mm256_mul_pd(_mm256_sub_pd(s_hi,s_lo),d_coeff); // 1 1 3 3 
+    f64x4 test_point3 = _mm256_unpacklo_pd(dsig_l,dsig_h);
+    f64x4 test_point4 = _mm256_unpackhi_pd(dsig_l,dsig_h);
+    // _mm256_store_pd(output_signal+i,dsig_l);
     // たすき掛け 
     dsig_l = _mm256_permute_pd(dsig_l,0b0101);
     dsig_h = _mm256_permute_pd(dsig_h,0b0101);
-    f64x4 ta = _mm256_mul_pd(dsig_l,sig_lo);
-    f64x4 tb = _mm256_mul_pd(dsig_h,sig_hi);
+    f64x4 ta = _mm256_mul_pd(dsig_l,s_lo);
+    f64x4 tb = _mm256_mul_pd(dsig_h,s_hi);
     f64x4 sig_out =  _mm256_hsub_pd(ta,tb);
-    // _mm256_store_pd(output_signal+i,sig_out);
-    // _mm256_store_pd(output_signal+i,dsig_l);
+    // _mm256_store_pd(output_signal+i,test_point4);
+    _mm256_store_pd(output_signal+i,sig_out);
     // _mmm256_print_pd(prev_sin_tmp);
     // move value for next loop
     prev_sig_lo = _mm256_permute2f128_pd(o0,o2,0x20);
