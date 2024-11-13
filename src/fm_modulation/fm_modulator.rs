@@ -37,16 +37,18 @@ pub struct DemodulationInfo {
     prev_sin: [f64; 4],
     prev_sig: [f64; 8],
     prev_internal: [f64; 8],
-    filter_coeff: f64,
-    filter_info: [f64; 4],
+    filter_coeff: Lpf,
+    filter_info: [FilterInfo; 6],
+    // filter_coeff: f64,
+    // filter_info: [f64; 4],
 }
 impl DemodulationInfo {
     pub fn new(fs: f64, fc:f64 , cutoff: f64) -> Self {
         let delta_angle = dbg!(TAU * dbg!(fc) * (1. / fs));
         Self {
             angle: [0., delta_angle, 2. * delta_angle, 3. * delta_angle],
-            // filter_coeff: Lpf::new(fs, fc, Lpf::Q),
-            filter_coeff: fast_filter::get_lpf_coeff(fs, cutoff),
+            filter_coeff: Lpf::new(fs, cutoff, Lpf::Q),
+            // filter_coeff: fast_filter::get_lpf_coeff(fs, cutoff),
             ..Default::default()
         }
     }
@@ -94,7 +96,7 @@ impl CvtIntermediateFreq {
             info: CnvFiInfos::new(
                 fs * 2.,
                 1. / fs * TAU * (dbg!(fc1 - fc2)),
-                fc2,
+                fc2 * 2.,
             ),
         }
     }
