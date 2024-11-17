@@ -2,6 +2,7 @@
 #include <immintrin.h>
 #include "rstype.h"
 #define ZEN_PLUS 1
+#define DISABLE_SIMD_DEMODULATE 1
 typedef uint64_t usize;
 typedef double f64;
 typedef __m256d f64x4;
@@ -36,10 +37,16 @@ typedef struct {
   f64 prev_sin[4];
   f64 prev_sig[8];
   f64 prev_internal[8];
+  f64 filter_coeff;
+  f64 filter_info[8];
+  // #if DISABLE_SIMD_DEMODULATE
   // f64 filter_coeff;
   // f64 filter_info[4];
-  FilterCoeffs filter_coeff;
-  FilterInfo filter_info[6];
+  // #else
+  // FilterCoeffs filter_coeff;
+  // FilterInfo filter_info[6];
+  // #endif
+  
 } DemodulationInfo;
 // #define TAU 2.0 * M_PI
 void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_sig,f64* const sum, const f64 sample_periodic, f64* const _angle, const f64 modulate_index, const f64 fc, usize const buf_len);

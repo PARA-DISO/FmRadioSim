@@ -200,26 +200,28 @@ void convert_intermediate_freq(
     // filter_info[0] = f_info;
 }
 void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
-  #if 1
-  FilterCoeffs* const coeff = &info->filter_coeff;
-  FilterInfo* filter_info = info->filter_info;
+  #if DISABLE_SIMD_DEMODULATE
+  // FilterCoeffs* const coeff = &info->filter_coeff;
+  // FilterInfo* filter_info = info->filter_info;
+  f64 const coeff = info->filter_coeff;
+  f64* filter_info = info->filter_info;
   // printf("buffer len: %ld\n", buf_len);
   f64 prev_sin = info->prev_sin[0];
   f64 angle = info->angle[0];
   f64 prev_a = info->prev_internal[0];
   f64 prev_b = info->prev_internal[1];
-  for (usize i = 0; i < buf_len; i++) {
+  for (usize i = 0; i < buf_len; i++) { 
     const f64 sin_val = sin(angle);
     // const f64 cos_val = cos(angle); //((sin_val - prev_sin) / (TAU*fc*sample_period))
     const f64 cos_val = ((sin_val - prev_sin) / (TAU*fc*sample_period));
-    const f64 current_a = lpf(-2 * input_signal[i] * sin_val, coeff,filter_info[0]);
-    const f64 current_b = lpf(2 * input_signal[i] * cos_val, coeff,filter_info[2]);
-    const f64 re = lpf(
-      prev_a,coeff, filter_info[1]
-    );
-    const f64 im = lpf(
-      prev_b,coeff, filter_info[3]
-    );
+    const f64 current_a = fast_lpf(-2 * input_signal[i] * sin_val, coeff,&filter_info[0]);
+    const f64 current_b = fast_lpf(2 * input_signal[i] * cos_val, coeff,&filter_info[2]);
+    const f64 re = fast_lpf(fast_lpf(
+      prev_a,coeff, &filter_info[1]
+    ),coeff,&filter_info[6]);
+    const f64 im = fast_lpf(fast_lpf(
+      prev_b,coeff, &filter_info[3]
+    ),coeff,&filter_info[7]);
     f64 d_re,d_im;
     differential(&d_re,&d_im,re,im,info->prev_sig,sample_period);
     f64 a = d_re * im;
@@ -228,8 +230,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     // output_signal[i] = re;
     prev_sin =sin_val ;
     angle += TAU * fc * sample_period;
-    prev_a = current_a;
-    prev_b = current_b;
+    prev_a = fast_lpf(current_a,coeff,&filter_info[4]);
+    prev_b = fast_lpf(current_b,coeff,&filter_info[5]);
   }
   info->angle[0] = fmod(angle,TAU);
   info->prev_sin[0] = prev_sin;
@@ -247,7 +249,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   f64x4 prev_sig_hi = _mm256_load_pd(info->prev_sig + 4);
   f64x4 prev_sig_internal_lo = _mm256_load_pd(info->prev_internal); // 0 0 2 2
   f64x4 prev_sig_internal_hi = _mm256_load_pd(info->prev_internal+4); // 1 1 3 3
-  f64x4 filter_prev = _mm256_load_pd(info->filter_info);
+  f64x4 filter_prev1 = _mm256_load_pd(info->filter_info);
+  f64x4 filter_prev2 = _mm256_load_pd(info->filter_info + 4);
   f64x4 filter_coeff = _mm256_set1_pd(info->filter_coeff);
   f64x4 d_coeff = _mm256_set1_pd(1/sample_period);
   printf("demodulate start\n");
@@ -275,28 +278,30 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     f64x4 s3 = _mm256_permute2f128_pd(sig_hi,prev_sig_hi,0x31);
     // LPF Process
     // y[i] = c*(x[i] -y[i-1]) + y[i-1]
-    f64x4 t0 = _mm256_sub_pd(s0,filter_prev);
-    f64x4 o0 = _mm256_fmadd_pd(t0,filter_coeff,filter_prev);
+    f64x4 t0 = _mm256_sub_pd(s0,filter_prev1);
+    f64x4 o0 = _mm256_fmadd_pd(t0,filter_coeff,filter_prev1);
     f64x4 t1 = _mm256_sub_pd(s1,o0);
     f64x4 o1 = _mm256_fmadd_pd(t1,filter_coeff,o0);
     f64x4 t2 = _mm256_sub_pd(s2,o1);
     f64x4 o2 = _mm256_fmadd_pd(t2,filter_coeff,o1);
     f64x4 t3 = _mm256_sub_pd(s3,o2);
-    filter_prev = _mm256_fmadd_pd(t3,filter_coeff,o2);
+    filter_prev1 = _mm256_fmadd_pd(t3,filter_coeff,o2);
+    // second filter
+    f64x4 u0 = _mm256_sub_pd(o0,filter_prev2);
+    f64x4 p0 = _mm256_fmadd_pd(u0,filter_coeff,filter_prev2);
+    f64x4 u1 = _mm256_sub_pd(o1,p0);
+    f64x4 p1 = _mm256_fmadd_pd(u1,filter_coeff,p0);
+    f64x4 u2 = _mm256_sub_pd(o2,p1);
+    f64x4 p2 = _mm256_fmadd_pd(u2,filter_coeff,p1);
+    f64x4 u3 = _mm256_sub_pd(filter_prev1,p2);
+    filter_prev2 = _mm256_fmadd_pd(u3,filter_coeff,p2);
     // DeInterleaving
-    f64x4 s_lo = _mm256_permute2f128_pd(o0,o2,0x31); // 0 0 2 2
-    f64x4 s_hi =  _mm256_permute2f128_pd(o1,filter_prev,0x31); // 1 1 3 3
+    f64x4 s_lo = _mm256_permute2f128_pd(p0,p2,0x31); // 0 0 2 2
+    f64x4 s_hi =  _mm256_permute2f128_pd(p1,filter_prev2,0x31); // 1 1 3 3
     // TEST AFTER LPF SIGNAL
     f64x4 test_point1 = _mm256_unpacklo_pd(s_lo,s_hi);
     f64x4 test_point2 = _mm256_unpackhi_pd(s_lo,s_hi);
     // differential
-    // TODO: アルゴリズムが異なる。
-    // x[i] - x[i-1]であるべきが、x[i] -x[i-4]となっている。
-    // 以下のコメントアウトコードは正しくはない=>単純な時系列データではないためこの方法は使えない。
-    // prev_sig_internal_lo = _mm256_blend_pd(prev_sig_internal_lo,sig_lo,0b0001);
-    // prev_sig_internal_lo = _mm256_rol_pd(prev_sig_internal_lo);
-    // prev_sig_internal_hi = _mm256_blend_pd(prev_sig_internal_hi,sig_hi,0b0001);
-    // prev_sig_internal_hi = _mm256_rol_pd(prev_sig_internal_hi);
     prev_sig_internal_lo = _mm256_blend_pd(s_hi,prev_sig_internal_hi,0b1100);
     prev_sig_internal_lo = _mm256_permute2f128_pd(prev_sig_internal_lo,prev_sig_internal_lo,0x01);
     f64x4 dsig_l = _mm256_mul_pd(_mm256_sub_pd(s_lo,prev_sig_internal_lo),d_coeff); // 0 0 2 2
@@ -311,11 +316,11 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     f64x4 tb = _mm256_mul_pd(dsig_h,s_hi);
     f64x4 sig_out =  _mm256_hsub_pd(ta,tb);
     // _mm256_store_pd(output_signal+i,test_point4);
-    _mm256_store_pd(output_signal+i,sig_out);
+    _mm256_store_pd(output_signal+i,_mm256_mul_pd(_mm256_set1_pd(4),sig_out));
     // _mmm256_print_pd(prev_sin_tmp);
     // move value for next loop
-    prev_sig_lo = _mm256_permute2f128_pd(o0,o2,0x20);
-    prev_sig_hi = _mm256_permute2f128_pd(o1,filter_prev,0x20);
+    prev_sig_lo = _mm256_permute2f128_pd(p0,p2,0x20);
+    prev_sig_hi = _mm256_permute2f128_pd(p1,filter_prev2,0x20);
     prev_sig_internal_lo = s_lo;
     prev_sig_internal_hi = s_hi;
   }
@@ -325,7 +330,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   _mm256_store_pd(info->prev_sig+4,prev_sig_hi);
   _mm256_store_pd(info->prev_internal,prev_sig_internal_lo);
   _mm256_store_pd(info->prev_internal+4,prev_sig_internal_hi);
-  _mm256_store_pd(info->filter_info,filter_prev);
+  _mm256_store_pd(info->filter_info,filter_prev1);
+  _mm256_store_pd(info->filter_info + 4,filter_prev2);
   #endif
 }
 
