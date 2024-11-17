@@ -7,6 +7,8 @@ fn main() {
     cc::Build::new()
         .file(fpath1)
         .flag("/arch:AVX2")
+        .flag("/fp:fast")
+        // .flag("/fp:precise")
         .include("cfiles")
         .compile("freq_modulation");
     // cc::Build::new()

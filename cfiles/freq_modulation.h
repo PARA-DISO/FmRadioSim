@@ -1,7 +1,7 @@
 #pragma once
 #include <immintrin.h>
 #include "rstype.h"
-
+#define ZEN_PLUS 1
 typedef uint64_t usize;
 typedef double f64;
 typedef __m256d f64x4;
@@ -18,6 +18,7 @@ typedef struct {
   f64 delta_angle;
   f64 prev_sig[4];
   f64 prev_cos[4];
+  f64 next_cos[4];
   f64 stage[8];
   f64 filter_coeff;
   f64 filter_info[8];

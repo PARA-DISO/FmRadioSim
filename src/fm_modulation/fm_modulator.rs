@@ -9,6 +9,7 @@ pub struct CnvFiInfos {
     delta_angle: f64,
     prev_sig: [f64; 4],
     prev_cos: [f64; 4],
+    next_cos: [f64; 4],
     stage: [f64; 8],
     filter_coeff: f64,
     filter_info: [f64; 8],
