@@ -432,10 +432,10 @@ impl MyChart {
                     &mut self.up_sampled_input[1],
                 );
             let lap0 = timer.elapsed();
-            println!(
-                "left: {:?}, right: {:?}",
-                left_upsample_info, right_upsample_info
-            );
+            // println!(
+            //     "left: {:?}, right: {:?}",
+            //     left_upsample_info, right_upsample_info
+            // );
             // composite
             self.composite.process_to_buffer(
                 &self.up_sampled_input[0],
@@ -465,11 +465,11 @@ impl MyChart {
                 .process(&self.modulated_signal, &mut self.intermediate);
             let lap4 = timer.elapsed();
             // // de-modulate
-            println!(
-                "in: {}, out:{}",
-                self.intermediate.len(),
-                self.demodulated_signal.len()
-            );
+            // println!(
+            //     "in: {}, out:{}",
+            //     self.intermediate.len(),
+            //     self.demodulated_signal.len()
+            // );
             self.demodulator.process_to_buffer(
                 &self.intermediate,
                 &mut self.demodulated_signal,
