@@ -26,7 +26,7 @@ plotters-iced = "0.10.0"
 rubato = "0.16.0"
 libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}
 # sfmt = "0.7.0"
-# spectrum-analyzer = "1.5.0"
+spectrum-analyzer = "1.5.0"
 
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}

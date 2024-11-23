@@ -1,6 +1,7 @@
 #pragma once
 #include <immintrin.h>
 #include "rstype.h"
+#define ENABLE_TEST_CODE 1
 #define ZEN_PLUS 1
 #define DISABLE_SIMD_DEMODULATE 0
 typedef uint64_t usize;
@@ -21,8 +22,10 @@ typedef struct {
   f64 prev_cos[4];
   f64 next_cos[4];
   f64 stage[8];
-  f64 filter_coeff;
-  f64 filter_info[8];
+
+  // f64 filter_coeff;
+  FilterCoeffs filter_coeff;
+  f64 filter_info[16];
 } CnvFiInfos;
 // typedef struct {
 //   f64 angle;

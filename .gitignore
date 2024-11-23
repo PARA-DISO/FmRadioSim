@@ -1,3 +1,5 @@
 /target
 *.obj
 log
+*.lib
+*.asm

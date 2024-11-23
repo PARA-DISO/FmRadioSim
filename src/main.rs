@@ -8,8 +8,8 @@ use iced::{
 };
 use plotters::{coord::Shift, prelude::*};
 use plotters_iced::{Chart, ChartWidget};
-// use spectrum_analyzer::scaling::scale_to_zero_to_one;
-// use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
+use spectrum_analyzer::scaling::scale_to_zero_to_one;
+use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 mod fm_modulation;
 use fm_modulation::*;
@@ -155,7 +155,8 @@ impl Application for State {
 const BUFFER_SIZE: usize = 256;
 const TEST_BUFFER_SIZE: usize = 256;
 const AUDIO_SAMPLE_RATE: usize = 44_100;
-const COMPOSITE_SAMPLE_RATE: usize = 132_300;
+// const COMPOSITE_SAMPLE_RATE: usize = 132_300;
+const COMPOSITE_SAMPLE_RATE: usize = 125_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 176_400_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 220500000;
 // const FM_MODULATION_SAMPLE_RATE: usize = (79_500_000 * 3);
@@ -163,13 +164,14 @@ const COMPOSITE_SAMPLE_RATE: usize = 132_300;
 // const FM_MODULATION_SAMPLE_RATE: usize = 882_000_000;
 const SIGNAL_FREQ: f64 = 440f64;
 // const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
-const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-const CARRIER_FREQ: f64 = 79_500_000f64;
-const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
+// const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
+const FM_MODULATION_SAMPLE_RATE: usize = 180_000_000;
+// const CARRIER_FREQ: f64 = 79_500_000f64;
+// const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
 const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
 const RATIO_FS_INTER_FS: usize = 4;
-// const CARRIER_FREQ: f64 = 44_00f64;
-// const INTERMEDIATE_FREQ: f64 = 440f64;
+const CARRIER_FREQ: f64 = 44_00f64;
+const INTERMEDIATE_FREQ: f64 = 440f64;
 // const CUT_OFF: f64 = 200_000.;
 // const CARRIER_FREQ: f64 =      79_5f64;
 // const INTERMEDIATE_FREQ: f64 = 10_7f64;
@@ -315,17 +317,17 @@ impl MyChart {
             fm_sample_rate,
             composite_buffer_size,
         );
-        let intermediate_buf_size = modulated_buffer_size / RATIO_FS_INTER_FS;
+        let intermediate_buf_size = dbg!(modulated_buffer_size) / RATIO_FS_INTER_FS;
         let up_sample_to176m = ResamplerInfo::new_upsample_info(
             COMPOSITE_SAMPLE_RATE,
             fm_sample_rate,
-            composite_buffer_size,
+            dbg!(composite_buffer_size),
         );
         let down_sample_to_100k = ResamplerInfo::new_downsample_info(
             intermediate_fs,
             // fm_sample_rate,
             COMPOSITE_SAMPLE_RATE,
-            intermediate_buf_size,
+            dbg!(intermediate_buf_size),
             // modulated_buffer_size,
         );
 
@@ -556,7 +558,7 @@ impl Chart<Message> for MyChart {
     ) {
         let children = root.split_evenly((3, 4));
 
-        let labels: [&str; 8] = [
+        let labels: [&str; 12] = [
             "L In",
             "R In",
             "Composite",
@@ -565,6 +567,10 @@ impl Chart<Message> for MyChart {
             "FM Demodulated",
             "L Out",
             "R Out",
+            "Intermediate Spectrum",
+            "Demodulate Spectrum",
+            "",
+            ""
         ];
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
@@ -623,6 +629,20 @@ impl Chart<Message> for MyChart {
                     &self.output_signal[1],
                     AUDIO_SAMPLE_RATE,
                 ),
+                8 => draw_spectrum(
+                  builder,
+                  labels[i],
+                  &self.intermediate,
+                  FM_MODULATION_SAMPLE_RATE >> 2,
+                  FrequencyLimit::All,
+                ),
+                9 => draw_spectrum(
+                  builder,
+                  labels[i],
+                  &self.demodulated_signal,
+                  FM_MODULATION_SAMPLE_RATE >> 2,
+                  FrequencyLimit::All,
+                ),
                 _ => {}
             }
         }
@@ -672,53 +692,62 @@ fn draw_chart<DB: DrawingBackend>(
         .unwrap();
 }
 
-// fn draw_spectrum<DB: DrawingBackend>(
-//     mut chart: ChartBuilder<DB>,
-//     label: &str,
-//     data: &[f32],
-//     sample_rate: usize,
-//     limit: FrequencyLimit,
-// ) {
-//     let spectrum = samples_fft_to_spectrum(
-//         data,
-//         sample_rate as u32,
-//         limit,
-//         Some(&scale_to_zero_to_one),
-//     )
-//     .unwrap();
-//     let mut chart = chart
-//         .margin(10)
-//         .caption(
-//             format!("{} ({}Hz)", label, spectrum.max().0),
-//             ("sans-serif", 22),
-//         )
-//         .x_label_area_size(30)
-//         .y_label_area_size(30)
-//         .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
-//         .unwrap();
+fn draw_spectrum<DB: DrawingBackend>(
+    mut chart: ChartBuilder<DB>,
+    label: &str,
+    data: &[f64],
+    sample_rate: usize,
+    limit: FrequencyLimit,
+) {
+  // let n = {
+  //   let mut n = data.len() as u64;
+  //   let mut x = 64;
+  //   while n & 0x8000_0000_0000_0000 == 0 {
+  //     n>>=1;
+  //     x-=1;
+  //   };
+  //   x
+  // };
+    let spectrum = samples_fft_to_spectrum(
+        data.iter().take((2048)).map(|x| *x as f32).collect::<Vec<f32>>().as_slice(),
+        sample_rate as u32,
+        limit,
+        Some(&scale_to_zero_to_one),
+    )
+    .unwrap();
+    let mut chart = chart
+        .margin(10)
+        .caption(
+            format!("{} ({}Hz)", label, spectrum.max().0),
+            ("sans-serif", 22),
+        )
+        .x_label_area_size(30)
+        .y_label_area_size(30)
+        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
+        .unwrap();
 
-//     chart
-//         .configure_mesh()
-//         .x_labels(5)
-//         .y_labels(3)
-//         // .y_label_style(
-//         //     ("sans-serif", 15)
-//         //         .into_font()
-//         //         .color(&plotters::style::colors::BLACK.mix(0.8))
-//         //         .transform(FontTransform::RotateAngle(30.0)),
-//         // )
-//         .draw()
-//         .unwrap();
-//     chart
-//         .draw_series(LineSeries::new(
-//             spectrum.data().iter().map(|(f, x)| (f.val(), x.val())),
-//             // (-50..=50)
-//             //     .map(|x| x as f32 / 50.0)
-//             //     .map(|x| (x, x.powf(power as f32))),
-//             &RED,
-//         ))
-//         .unwrap();
-// }
+    chart
+        .configure_mesh()
+        .x_labels(5)
+        .y_labels(3)
+        // .y_label_style(
+        //     ("sans-serif", 15)
+        //         .into_font()
+        //         .color(&plotters::style::colors::BLACK.mix(0.8))
+        //         .transform(FontTransform::RotateAngle(30.0)),
+        // )
+        .draw()
+        .unwrap();
+    chart
+        .draw_series(LineSeries::new(
+            spectrum.data().iter().map(|(f, x)| (f.val(), x.val())),
+            // (-50..=50)
+            //     .map(|x| x as f32 / 50.0)
+            //     .map(|x| (x, x.powf(power as f32))),
+            &RED,
+        ))
+        .unwrap();
+}
 #[inline]
 fn get_buffer_size(s1: usize, s2: usize, base_size: usize) -> usize {
     (s2 as f64 / s1 as f64 * base_size as f64 + 0.5).floor() as usize
