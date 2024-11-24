@@ -6,6 +6,9 @@
 #define  _mm256_ror_pd(a) _mm256_permute4x64_pd(a, _MM_SHUFFLE(2,1,0,3))
 #define  _mm256_rol_pd(a) _mm256_permute4x64_pd(a, _MM_SHUFFLE(0,3,2,1))
 // DEBUG CODE
+void print_sd(f64 x) {
+  printf("%g\n",x);
+}
 void _mm256_print_pd(f64x4 v) {
   printf("[%f, %f, %f, %f]\n", v.m256d_f64[0], v.m256d_f64[1], v.m256d_f64[2], v.m256d_f64[3]);
 }
@@ -86,33 +89,25 @@ void convert_intermediate_freq(
     f64x4 next_cos = _mm256_load_pd(info->next_cos); // 3.5 4.5 5.5 6.5
     f64x4 angle = _mm256_load_pd(info->angle);
     f64x4 full_delta_angle = _mm256_set1_pd(info->delta_angle*4);
-    // f64x4 half_angle = _mm256_set1_pd(info->delta_angle * 0.5);
-    // #if ZEN_PLUS
-    // f64x2 filter_info = _mm_load_pd(info->filter_info);
-    // f64x2 filter_coeff = _mm_set1_pd(1 - info->filter_coeff);
-    // #else
-    // f64x4 filter_info = _mm256_load_pd(info->filter_info);
-    // f64x4 filter_coeff = _mm256_set1_pd(1 - info->filter_coeff);
-    // #endif
-    f64x2 before_sig_lo = _mm_load_pd(info->prev_sig); // -2 -1
-    f64x2 second_stage_a_lo = _mm_load_pd(info->stage); // -0.5 0.5
-    f64x2 second_stage_a_hi = _mm_load_pd(info->stage+2); // 1.5 2.5
-    f64x2 second_stage_b_lo = _mm_load_pd(info->stage+4); // 0 1
-    f64x2 second_stage_b_hi = _mm_load_pd(info->stage+6); // 2 3
+    // Signals
+    f64x2 before_sig_lo = _mm_load_pd(info->prev_sig);// -2 -1
+    f64x2 stage2_a_lo = _mm_load_pd(info->stage);     // -0.5 0.5
+    f64x2 stage2_a_hi = _mm_load_pd(info->stage + 2); // 1.5 2.5
+    f64x2 stage2_b_lo = _mm_load_pd(info->stage + 4); // 0 1
+    f64x2 stage2_b_hi = _mm_load_pd(info->stage + 6); // 2 3
+    f64x2 stage1_a_lo = _mm_load_pd(info->stage + 8); // -0.5 0.5
+    f64x2 stage1_b_lo = _mm_load_pd(info->stage +10); // 1.5 2.5
+    f64x2 stage1_a_hi = _mm_load_pd(info->stage +12); // 0 1
+    f64x2 stage1_b_hi = _mm_load_pd(info->stage +14); // 2 3
     // LPF INFOS
-    f64x2 prev_sig = _mm_load_pd(info->filter_info);
-    f64x2 prev_prev_sig = _mm_load_pd(info->filter_info + 4);
     f64x2 prev_out = _mm_load_pd(info->filter_info + 8);
-    f64x2 prev_prev_out = _mm_load_pd(info->filter_info + 12);
-    _mm_print_pd(prev_prev_out);
+    _mm_print_pd(prev_out);
+    _mm_print_pd(stage1_a_lo);
+    print_sd(info->filter_coeff);
     // filter coefficients
-    f64x2 c0 = _mm_set1_pd(info->filter_coeff.c0);
-    f64x2 c1 = _mm_set1_pd(info->filter_coeff.c1);
-    f64x2 c2 = _mm_set1_pd(info->filter_coeff.c2);
-    f64x2 d0 = _mm_set1_pd(info->filter_coeff.c3);
-    f64x2 d1 = _mm_set1_pd(info->filter_coeff.c4);
-    _mm_print_pd(c0);
-    _mm_print_pd(d1);
+    f64x2 coeff_a = _mm_set1_pd(info->filter_coeff);
+    f64x2 coeff_b = _mm_set1_pd(1 - info->filter_coeff);
+    _mm_print_pd(coeff_a);
     for(usize i = 0, j = 0; i < buf_len; i+=4) {
       f64x4 signal = _mm256_load_pd(input_signal + i);     // 0 1 2 3
       // shift cosine value 1
@@ -142,100 +137,66 @@ void convert_intermediate_freq(
       angle = _mm256_add_pd(angle,full_delta_angle);
       prev_cos = next_cos;
       before_sig_lo = shi;
-      //// lpf (c0 * x[i] + c1 * x[i-1] + c2 * x[i-2] - d0 * y[i-1] - d1 * y[i-2])
+      //// calculate 2 stage First IIR LPF with pipline process
+      //// IIR LPF: y[i] = a(x[i]-y[i-1])+y[i-1]
       // interleaving1
-      f64x2 x0 = _mm_unpacklo_pd(second_stage_a_lo, sig_a_lo); // -0.5
-      f64x2 x1 = _mm_unpacklo_pd(second_stage_b_lo, sig_b_lo); // 0
+      f64x2 x0 = _mm_unpacklo_pd(stage2_a_lo, stage1_a_lo); // -0.5
+      f64x2 x1 = _mm_unpacklo_pd(stage2_b_lo, stage1_b_lo); // 0
       // interleaving2
-      f64x2 x2 = _mm_unpackhi_pd(second_stage_a_lo,sig_a_lo); // 0.5
-      f64x2 x3 = _mm_unpackhi_pd(second_stage_b_lo,sig_b_lo); // 1
+      f64x2 x2 = _mm_unpackhi_pd(stage2_a_lo,stage1_a_lo); // 0.5
+      f64x2 x3 = _mm_unpackhi_pd(stage2_b_lo,stage1_b_lo); // 1
       // interleaving3
-      f64x2 x4 = _mm_unpacklo_pd(second_stage_a_hi, sig_a_hi); // 1.5
-      f64x2 x5 = _mm_unpacklo_pd(second_stage_b_hi, sig_b_hi); // 2
+      f64x2 x4 = _mm_unpacklo_pd(stage2_a_hi, stage1_a_hi); // 1.5
+      f64x2 x5 = _mm_unpacklo_pd(stage2_b_hi, stage1_b_hi); // 2
       // interleaving4
-      f64x2 x6 = _mm_unpackhi_pd(second_stage_a_hi, sig_a_hi); // 2.5
-      f64x2 x7 = _mm_unpackhi_pd(second_stage_b_hi, sig_b_hi); // 3
+      f64x2 x6 = _mm_unpackhi_pd(stage2_a_hi, stage1_a_hi); // 2.5
+      f64x2 x7 = _mm_unpackhi_pd(stage2_b_hi, stage1_b_hi); // 3
+
+      f64x2 o0 = _mm_fmadd_pd(coeff_b,prev_out,x0);
+      f64x2 o1 = _mm_fmadd_pd(coeff_b,o0,x1);
+      f64x2 o2 = _mm_fmadd_pd(coeff_b,o1,x2);
+      f64x2 o3 = _mm_fmadd_pd(coeff_b,o2,x3);
+      f64x2 o4 = _mm_fmadd_pd(coeff_b,o3,x4);
+      f64x2 o5 = _mm_fmadd_pd(coeff_b,o4,x5);
+      f64x2 o6 = _mm_fmadd_pd(coeff_b,o5,x6);
+      f64x2 o7 = _mm_fmadd_pd(coeff_b,o6,x7);
       
-      // calculate 1
-      f64x2 t0_0 = _mm_mul_pd(   prev_prev_out, d1);
-      f64x2 t0_1 = _mm_fmsub_pd( prev_sig, d0, t0_0);
-      f64x2 t0_2 = _mm_fnmadd_pd(prev_prev_sig, c2, t0_1);
-      f64x2 t0_3 = _mm_fmadd_pd( prev_sig, c1, t0_2);
-      f64x2 o0   = _mm_fmadd_pd( x0, c0, t0_3); // -0.5
-
-      f64x2 t1_0 = _mm_mul_pd(   prev_out, d1);
-      f64x2 t1_1 = _mm_fmsub_pd( o0, d0, t1_0);
-      f64x2 t1_2 = _mm_fnmadd_pd(prev_sig, c2, t1_1);
-      f64x2 t1_3 = _mm_fmadd_pd( x0, c1, t1_2);
-      f64x2 o1   = _mm_fmadd_pd( x1, c0, t1_3); // 0
-      
-      f64x2 t2_0 = _mm_mul_pd(   o0, d1);
-      f64x2 t2_1 = _mm_fmsub_pd( o1, d0, t2_0);
-      f64x2 t2_2 = _mm_fnmadd_pd(x0, c2, t2_1);
-      f64x2 t2_3 = _mm_fmadd_pd( x1, c1, t2_2);
-      f64x2 o2   = _mm_fmadd_pd( x2, c0, t2_3); // 0.5
-      
-      f64x2 t3_0 = _mm_mul_pd(   o1, d1);
-      f64x2 t3_1 = _mm_fmsub_pd( o2, d0, t3_0);
-      f64x2 t3_2 = _mm_fnmadd_pd(x1, c2, t3_1);
-      f64x2 t3_3 = _mm_fmadd_pd( x2, c1, t3_2);
-      f64x2 o3   = _mm_fmadd_pd( x3, c0, t3_3); // 1
-
-      f64x2 t4_0 = _mm_mul_pd(   o2, d1);
-      f64x2 t4_1 = _mm_fmsub_pd( o3, d0, t4_0);
-      f64x2 t4_2 = _mm_fnmadd_pd(x2, c2, t4_1);
-      f64x2 t4_3 = _mm_fmadd_pd( x3, c1, t4_2);
-      f64x2 o4   = _mm_fmadd_pd( x4, c0, t4_3); // 1.5
-
-      f64x2 t5_0 = _mm_mul_pd(   o3, d1);
-      f64x2 t5_1 = _mm_fmsub_pd( o4, d0, t5_0);
-      f64x2 t5_2 = _mm_fnmadd_pd(x3, c2, t5_1);
-      f64x2 t5_3 = _mm_fmadd_pd( x4, c1, t5_2);
-      f64x2 o5   = _mm_fmadd_pd( x5, c0, t5_3); // 2
-
-      f64x2 t6_0 = _mm_mul_pd(   o4, d1);
-      f64x2 t6_1 = _mm_fmsub_pd( o5, d0, t6_0);
-      f64x2 t6_2 = _mm_fnmadd_pd(x4, c2, t6_1);
-      f64x2 t6_3 = _mm_fmadd_pd( x5, c1, t6_2);
-      f64x2 o6   = _mm_fmadd_pd( x6, c0, t6_3); // 2.5
-
-      f64x2 t7_0 = _mm_mul_pd(   o5, d1);
-      f64x2 t7_1 = _mm_fmsub_pd( o6, d0, t7_0);
-      f64x2 t7_2 = _mm_fnmadd_pd(x5, c2, t7_1);
-      f64x2 t7_3 = _mm_fmadd_pd( x6, c1, t7_2);
-      f64x2 o7   = _mm_fmadd_pd( x7, c0, t7_3); // 3
-      prev_prev_sig = x6;
-      prev_sig = x7;
-      prev_prev_out = o6;
+      // set next stage parameters
+      // prev_sig = x7;
       prev_out = o7;
-      _mm_print_pd(o7);
-      second_stage_a_lo = _mm_unpackhi_pd(o0, o2);
-      second_stage_b_lo = _mm_unpackhi_pd(o1, o3);
-      second_stage_a_hi = _mm_unpackhi_pd(o4, o6);
-      second_stage_b_hi = _mm_unpackhi_pd(o5, o7);
-      output_signal[i >> 2] = _mm_cvtsd_f64(o7);
+      f64x2 stage2_a_lo_tmp = _mm_unpackhi_pd(o0, o2);
+      f64x2 stage2_b_lo_tmp = _mm_unpackhi_pd(o1, o3);
+      f64x2 stage2_a_hi_tmp = _mm_unpackhi_pd(o4, o6);
+      f64x2 stage2_b_hi_tmp = _mm_unpackhi_pd(o5, o7);
+      stage1_a_lo = _mm_mul_pd(sig_a_lo,coeff_a);
+      stage1_b_lo = _mm_mul_pd(sig_a_hi,coeff_a);
+      stage1_a_hi = _mm_mul_pd(sig_b_lo,coeff_a);
+      stage1_b_hi = _mm_mul_pd(sig_b_hi,coeff_a);
+      stage2_a_lo = _mm_mul_pd(stage2_a_lo_tmp,coeff_a);
+      stage2_b_lo = _mm_mul_pd(stage2_b_lo_tmp,coeff_a);
+      stage2_a_hi = _mm_mul_pd(stage2_a_hi_tmp,coeff_a);
+      stage2_b_hi = _mm_mul_pd(stage2_b_hi_tmp,coeff_a);
+      output_signal[i >> 2] = 1*_mm_cvtsd_f64(o7);
+      // output_signal[i >> 2] = 1*_mm_cvtsd_f64(slo);
       next_cos = _mm256_cos_pd(angle);
     }
     _mm_store_pd(info->prev_sig, before_sig_lo);
     _mm256_store_pd(info->angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
     _mm256_store_pd(info->next_cos,next_cos);
     _mm256_store_pd(info->prev_cos,prev_cos);
-    _mm_store_pd(info->stage,    second_stage_a_lo);
-    _mm_store_pd(info->stage + 2,second_stage_a_hi);
-    _mm_store_pd(info->stage + 4,second_stage_b_lo);
-    _mm_store_pd(info->stage + 6,second_stage_b_hi);
-    _mm_store_pd(info->filter_info,prev_sig);
-    _mm_store_pd(info->filter_info+4,prev_prev_sig);
+    _mm_store_pd(info->stage,    stage2_a_lo);
+    _mm_store_pd(info->stage + 2,stage2_b_lo);
+    _mm_store_pd(info->stage + 4,stage2_a_hi);
+    _mm_store_pd(info->stage + 6,stage2_b_hi);
+    _mm_store_pd(info->stage + 8,stage1_a_lo);
+    _mm_store_pd(info->stage +10,stage1_b_lo);
+    _mm_store_pd(info->stage +12,stage1_a_hi);
+    _mm_store_pd(info->stage +14,stage1_b_hi);
+    // _mm_store_pd(info->filter_info,prev_sig);
+    // _mm_store_pd(info->filter_info+4,prev_prev_sig);
     _mm_store_pd(info->filter_info+8,prev_out);
-    _mm_store_pd(info->filter_info+12,prev_prev_out);
+    // _mm_store_pd(info->filter_info+12,prev_prev_out);
 
-    // _mm256_store_pd(info->stage,prev_sig_a);
-    // _mm256_store_pd(info->stage + 4,prev_sig_b);
-    // #if ZEN_PLUS
-    // _mm_store_pd(info->filter_info,filter_info);
-    // #else
-    // _mm256_store_pd(info->filter_info,filter_info);
-    // #endif
   #else
    
     f64x4 prev = _mm256_load_pd(info->prev_sig);
@@ -364,6 +325,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   info->prev_internal[1] = prev_b;
   #else
   // Angles
+  print_sd(fc);
   f64x4 delta_angle = _mm256_set1_pd(TAU * fc * sample_period * 4);
   f64x4 angle = _mm256_load_pd(info->angle);
   // Prev Signals
@@ -470,8 +432,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
     f64x4 ta = _mm256_mul_pd(dsig_l,s_lo);
     f64x4 tb = _mm256_mul_pd(dsig_h,s_hi);
     f64x4 sig_out =  _mm256_hsub_pd(ta,tb);
-    // _mm256_store_pd(output_signal+i,test_point1);
-    _mm256_store_pd(output_signal+i,_mm256_mul_pd(_mm256_set1_pd(1),sig_out));
+    // _mm256_store_pd(output_signal+i,test_point2);
+    _mm256_store_pd(output_signal+i,_mm256_mul_pd(_mm256_set1_pd(8),sig_out));
     // move value for next loop
     prev_sig_lo = _mm256_permute2f128_pd(o0,o2,0x20);
     prev_sig_hi = _mm256_permute2f128_pd(o1,o3,0x20);

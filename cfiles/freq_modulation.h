@@ -21,10 +21,10 @@ typedef struct {
   f64 prev_sig[4];
   f64 prev_cos[4];
   f64 next_cos[4];
-  f64 stage[8];
+  f64 stage[16];
 
-  // f64 filter_coeff;
-  FilterCoeffs filter_coeff;
+  f64 filter_coeff;
+  // FilterCoeffs filter_coeff;
   f64 filter_info[16];
 } CnvFiInfos;
 // typedef struct {

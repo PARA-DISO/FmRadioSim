@@ -10,16 +10,16 @@ pub struct CnvFiInfos {
     prev_sig: [f64; 4],
     prev_cos: [f64; 4],
     next_cos: [f64; 4],
-    stage: [f64; 8],
-    // filter_coeff: f64,
-    filter_coeff: Lpf,
+    stage: [f64; 16],
+    filter_coeff: f64,
+    // filter_coeff: Lpf,
     filter_info: [f64; 16],
 }
 impl CnvFiInfos {
     pub fn new(fs: f64, delta_angle: f64, cut_off: f64) -> Self {
         Self {
-            // filter_coeff: fast_filter::get_lpf_coeff(fs, cut_off),
-            filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
+            filter_coeff: dbg!(fast_filter::get_lpf_coeff(dbg!(fs), dbg!(cut_off))),
+            // filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
             angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
             delta_angle,
             ..Default::default()

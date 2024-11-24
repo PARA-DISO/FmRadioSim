@@ -94,6 +94,7 @@ fn main() {
 #[derive(Debug)]
 enum Message {
     Tick,
+    None,
 }
 
 struct State {
@@ -122,7 +123,12 @@ impl Application for State {
     fn update(&mut self, message: Self::Message) -> Command<Self::Message> {
         match message {
             Message::Tick => {
+              if self.chart.is_draw() {
                 self.chart.next();
+              }
+            }
+            Message::None => {
+
             }
         }
         Command::none()
@@ -148,7 +154,7 @@ impl Application for State {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // window::frames().map(|_| Message::Tick)
-        time::every(time::Duration::from_millis(1000)).map(|_| Message::Tick)
+        time::every(time::Duration::from_millis(1000)).map(|_| Message::Tick )
     }
 }
 // use std::collections::VecDeque;
@@ -166,12 +172,15 @@ const SIGNAL_FREQ: f64 = 440f64;
 // const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
 const FM_MODULATION_SAMPLE_RATE: usize = 180_000_000;
-// const CARRIER_FREQ: f64 = 79_500_000f64;
-// const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
-const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
+// const FM_MODULATION_SAMPLE_RATE: usize = 192_000;
+// const CARRIER_FREQ: f64 = 10_700_000f64;
+const CARRIER_FREQ:f64 =       79_500_000f64;
+const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
+// const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
+const SIGNAL_MAX_FREQ: f64 = 53_000.*2.;
 const RATIO_FS_INTER_FS: usize = 4;
-const CARRIER_FREQ: f64 = 44_00f64;
-const INTERMEDIATE_FREQ: f64 = 440f64;
+// const CARRIER_FREQ: f64 = 4400.*4.;
+// const INTERMEDIATE_FREQ: f64 = 4400f64;
 // const CUT_OFF: f64 = 200_000.;
 // const CARRIER_FREQ: f64 =      79_5f64;
 // const INTERMEDIATE_FREQ: f64 = 10_7f64;
@@ -396,6 +405,9 @@ impl MyChart {
 
         chart.into()
     }
+    fn is_draw(&self) -> bool {
+      self.continue_flag
+    }
     fn next(&mut self) {
         use std::time::Instant;
         if self.continue_flag && self.render_times < RENDER_MAX {
@@ -609,13 +621,13 @@ impl Chart<Message> for MyChart {
                     builder,
                     labels[i],
                     &self.intermediate,
-                    FM_MODULATION_SAMPLE_RATE >> 1,
+                    FM_MODULATION_SAMPLE_RATE/ RATIO_FS_INTER_FS,
                 ),
                 5 => draw_chart(
                     builder,
                     labels[i],
                     &self.demodulated_signal,
-                    COMPOSITE_SAMPLE_RATE,
+                    FM_MODULATION_SAMPLE_RATE / RATIO_FS_INTER_FS,
                 ),
                 6 => draw_chart(
                     builder,
@@ -699,17 +711,18 @@ fn draw_spectrum<DB: DrawingBackend>(
     sample_rate: usize,
     limit: FrequencyLimit,
 ) {
-  // let n = {
-  //   let mut n = data.len() as u64;
-  //   let mut x = 64;
-  //   while n & 0x8000_0000_0000_0000 == 0 {
-  //     n>>=1;
-  //     x-=1;
-  //   };
-  //   x
-  // };
+    let n = {
+      let mut n = dbg!(data.len()) as u64;
+      let mut x = 64;
+      while n & 0x8000_0000_0000_0000 == 0 {
+        n<<=1;
+        x-=1;
+      };
+      1<<(x-1)
+    };
+    dbg!(n);
     let spectrum = samples_fft_to_spectrum(
-        data.iter().take((2048)).map(|x| *x as f32).collect::<Vec<f32>>().as_slice(),
+        data.iter().take(n.min(2048)).map(|x| *x as f32).collect::<Vec<f32>>().as_slice(),
         sample_rate as u32,
         limit,
         Some(&scale_to_zero_to_one),
