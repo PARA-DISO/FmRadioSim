@@ -170,14 +170,14 @@ const COMPOSITE_SAMPLE_RATE: usize = 125_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 882_000_000;
 const SIGNAL_FREQ: f64 = 440f64;
 // const FM_MODULATION_SAMPLE_RATE: usize = 352_800_000;
-// const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-const FM_MODULATION_SAMPLE_RATE: usize = 180_000_000;
+const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
+// const FM_MODULATION_SAMPLE_RATE: usize = 180_000_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 192_000;
 // const CARRIER_FREQ: f64 = 10_700_000f64;
 const CARRIER_FREQ:f64 =       79_500_000f64;
 const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
 // const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
-const SIGNAL_MAX_FREQ: f64 = 53_000.*2.;
+const SIGNAL_MAX_FREQ: f64 = 75_000.;
 const RATIO_FS_INTER_FS: usize = 4;
 // const CARRIER_FREQ: f64 = 4400.*4.;
 // const INTERMEDIATE_FREQ: f64 = 4400f64;
@@ -712,7 +712,7 @@ fn draw_spectrum<DB: DrawingBackend>(
     limit: FrequencyLimit,
 ) {
     let n = {
-      let mut n = dbg!(data.len()) as u64;
+      let mut n = (data.len()) as u64;
       let mut x = 64;
       while n & 0x8000_0000_0000_0000 == 0 {
         n<<=1;
@@ -720,7 +720,6 @@ fn draw_spectrum<DB: DrawingBackend>(
       };
       1<<(x-1)
     };
-    dbg!(n);
     let spectrum = samples_fft_to_spectrum(
         data.iter().take(n.min(2048)).map(|x| *x as f32).collect::<Vec<f32>>().as_slice(),
         sample_rate as u32,

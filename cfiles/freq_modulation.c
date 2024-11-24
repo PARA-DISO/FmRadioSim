@@ -101,13 +101,13 @@ void convert_intermediate_freq(
     f64x2 stage1_b_hi = _mm_load_pd(info->stage +14); // 2 3
     // LPF INFOS
     f64x2 prev_out = _mm_load_pd(info->filter_info + 8);
-    _mm_print_pd(prev_out);
-    _mm_print_pd(stage1_a_lo);
-    print_sd(info->filter_coeff);
+    // _mm_print_pd(prev_out);
+    // _mm_print_pd(stage1_a_lo);
+    // print_sd(info->filter_coeff);
     // filter coefficients
     f64x2 coeff_a = _mm_set1_pd(info->filter_coeff);
     f64x2 coeff_b = _mm_set1_pd(1 - info->filter_coeff);
-    _mm_print_pd(coeff_a);
+    // _mm_print_pd(coeff_a);
     for(usize i = 0, j = 0; i < buf_len; i+=4) {
       f64x4 signal = _mm256_load_pd(input_signal + i);     // 0 1 2 3
       // shift cosine value 1
@@ -115,7 +115,7 @@ void convert_intermediate_freq(
       f64x2 prev_cos_hi = _mm256_extractf128_pd(prev_cos,1);    // 1.5 2.5
       f64x2 next_cos_value_lo = _mm256_extractf128_pd(next_cos,0); // 3.5 4.5
       // load signal
-      f64x2 slo = _mm256_extractf128_pd(signal,0); // 2 3
+      f64x2 slo = _mm256_extractf128_pd(signal,0); // 0 1
       f64x2 shi = _mm256_extractf128_pd(signal,1); // 2 3
       // shift cosine value 2
       f64x2 current_cos_lo_hi = _mm_shuffle_pd(prev_cos_lo,prev_cos_hi,0b01); // 0.5 1.5
@@ -176,7 +176,7 @@ void convert_intermediate_freq(
       stage2_b_lo = _mm_mul_pd(stage2_b_lo_tmp,coeff_a);
       stage2_a_hi = _mm_mul_pd(stage2_a_hi_tmp,coeff_a);
       stage2_b_hi = _mm_mul_pd(stage2_b_hi_tmp,coeff_a);
-      output_signal[i >> 2] = 1*_mm_cvtsd_f64(o7);
+      output_signal[i >> 2] = 4*_mm_cvtsd_f64(o0);
       // output_signal[i >> 2] = 1*_mm_cvtsd_f64(slo);
       next_cos = _mm256_cos_pd(angle);
     }
@@ -184,9 +184,17 @@ void convert_intermediate_freq(
     _mm256_store_pd(info->angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
     _mm256_store_pd(info->next_cos,next_cos);
     _mm256_store_pd(info->prev_cos,prev_cos);
+    // stage2_a_lo
+    // stage2_a_hi
+    // stage2_b_lo
+    // stage2_b_hi
+    // stage1_a_lo
+    // stage1_b_lo
+    // stage1_a_hi
+    // stage1_b_hi
     _mm_store_pd(info->stage,    stage2_a_lo);
-    _mm_store_pd(info->stage + 2,stage2_b_lo);
-    _mm_store_pd(info->stage + 4,stage2_a_hi);
+    _mm_store_pd(info->stage + 2,stage2_a_hi);
+    _mm_store_pd(info->stage + 4,stage2_b_lo);
     _mm_store_pd(info->stage + 6,stage2_b_hi);
     _mm_store_pd(info->stage + 8,stage1_a_lo);
     _mm_store_pd(info->stage +10,stage1_b_lo);
@@ -325,7 +333,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 samp
   info->prev_internal[1] = prev_b;
   #else
   // Angles
-  print_sd(fc);
+  // print_sd(fc);
   f64x4 delta_angle = _mm256_set1_pd(TAU * fc * sample_period * 4);
   f64x4 angle = _mm256_load_pd(info->angle);
   // Prev Signals

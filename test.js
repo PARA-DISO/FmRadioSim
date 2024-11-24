@@ -1,5 +1,6 @@
 
-const FS = 180.0 /2 ;
+// const FS = 180.0;
+const FS = 192/4;
 var calc_fe = (fs,f) => fs -f;
 var get_upper_freq_hi = (fc) => 2*fc - 10.7 + 0.1;
 var get_upper_freq_lo = (fc) => 2*fc - 10.7 - 0.1;
