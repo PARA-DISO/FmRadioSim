@@ -148,34 +148,50 @@ impl Hpf {
         buf
     }
 }
+#[derive(Default)]
 pub struct Bpf {
-    high_pass: Hpf,
-    low_pass: Lpf,
+  c0: f64,
+  c1: f64,
+  c2: f64,
+  c3: f64,
+  c4: f64,
 }
 impl Bpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
-    pub fn new(sample_rate: f64, low_cut: f64, high_cut: f64, q: f64) -> Bpf {
-        Bpf {
-            high_pass: Hpf::new(sample_rate, low_cut, q),
-            low_pass: Lpf::new(sample_rate, high_cut, q),
-        }
+    pub fn new(sample_rate: f64, cut_off: f64, bw: f64) -> Bpf {
+      let omega = TAU *  cut_off / sample_rate;
+      let alpha = (omega).sin() * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
+      
+      let a0 =  1.0 + alpha;
+      let a1 = -2.0 * omega.cos();
+      let a2 =  1.0 - alpha;
+      let b0 =  alpha;
+      let b1 =  0.0;
+      let b2 = -alpha;
+      Self {
+        c0: b0 / a0,
+        c1: b1 / a0,
+        c2: b2 / a0,
+        c3: a1 / a0,
+        c4: a2 / a0,
+      }
     }
     // pub fn process(&mut self, signal: &mut [f64]) {
     //     for i in 0..signal.len() {
     //         signal[i] = self.process_without_buffer(signal[i]);
     //     }
     // }
-    pub fn process_without_buffer(
-        &mut self,
-        signal: f64,
-        filter_info: &mut [FilterInfo; 2],
-    ) -> f64 {
-        let buf = self
-            .high_pass
-            .process_without_buffer(signal, &mut filter_info[0]);
-        self.low_pass
-            .process_without_buffer(buf, &mut filter_info[1])
-    }
+    // pub fn process_without_buffer(
+    //     &mut self,
+    //     signal: f64,
+    //     filter_info: &mut [FilterInfo; 2],
+    // ) -> f64 {
+    //     let buf = self
+    //         .high_pass
+    //         .process_without_buffer(signal, &mut filter_info[0]);
+    //     self.low_pass
+    //         .process_without_buffer(buf, &mut filter_info[1])
+    // }
 }
 
 pub struct Notch {

@@ -1,6 +1,8 @@
 use std::f64::consts::TAU;
+use iced::widget::shader::wgpu::naga::back::msl::sampler::Filter;
+
 // pub type SampleType = f32;
-use crate::filter::{fast_filter, FilterInfo, Lpf};
+use crate::filter::{fast_filter, FilterInfo, Lpf,Bpf};
 
 #[repr(C)]
 #[derive(Default)]
@@ -56,39 +58,7 @@ impl DemodulationInfo {
         }
     }
 }
-mod fm_sys {
-    use std::ffi::c_void;
-    extern "C" {
-        pub fn fm_modulate(
-            output_signal: *mut f64,
-            input_signal: *const f64,
-            prev_sig: *mut f64,
-            sum: *mut f64,
-            sample_periodic: f64,
-            angle: *mut f64,
-            modulate_index: f64,
-            fc: f64,
-            buf_len: u64,
-        );
-        pub fn fm_demodulate(
-            output_signal: *mut f64,
-            input_signal: *const f64,
-            sample_period: f64,
-            carrier_freq: f64,
-            info: *mut crate::fm_modulator::DemodulationInfo,
-            buf_len: u64,
-        );
-        pub fn convert_intermediate_freq(
-            output_signal: *mut f64,
-            input_signal: *const f64,
-            sample_period: f64,
-            fc: f64,
-            fi: f64,
-            info: *mut crate::fm_modulator::CnvFiInfos,
-            buf_len: usize,
-        );
-    }
-}
+
 impl CvtIntermediateFreq {
     pub fn new(fs: f64, fc1: f64, fc2: f64) -> Self {
         println!("fs: {}, fc: {}, fi: {}", fs, fc1, fc2);
@@ -224,4 +194,65 @@ impl FmDeModulator {
             );
         }
     }
+}
+#[derive(Default)]
+pub struct Filtering {
+  filter_coeff: Bpf,
+}
+impl Filtering {
+    const BAND_WIDTH:f64 = 0.2; // +- 124kHz when fc = 10.7MHz
+    pub fn new(fs: f64,cutoff: f64) -> Self {
+      Self {
+        filter_coeff: Bpf::new(fs, cutoff,Self::BAND_WIDTH),
+        ..Default::default()
+      }
+    }
+    pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
+      unsafe {fm_sys::filtering(
+        dst.as_mut_ptr(),
+        input.as_ptr(),
+        &raw const self.filter_coeff as *const core::ffi::c_void,
+        input.len() as u64
+      )}
+    }
+}
+
+mod fm_sys {
+  use std::ffi::c_void;
+  extern "C" {
+      pub fn fm_modulate(
+          output_signal: *mut f64,
+          input_signal: *const f64,
+          prev_sig: *mut f64,
+          sum: *mut f64,
+          sample_periodic: f64,
+          angle: *mut f64,
+          modulate_index: f64,
+          fc: f64,
+          buf_len: u64,
+      );
+      pub fn fm_demodulate(
+          output_signal: *mut f64,
+          input_signal: *const f64,
+          sample_period: f64,
+          carrier_freq: f64,
+          info: *mut crate::fm_modulator::DemodulationInfo,
+          buf_len: u64,
+      );
+      pub fn convert_intermediate_freq(
+          output_signal: *mut f64,
+          input_signal: *const f64,
+          sample_period: f64,
+          fc: f64,
+          fi: f64,
+          info: *mut crate::fm_modulator::CnvFiInfos,
+          buf_len: usize,
+      );
+      pub fn filtering(
+        output_signal: *mut f64,
+        input_signal: *const f64,
+        filter_coeff: *const c_void,
+        buf_len: u64,
+      );
+  }
 }

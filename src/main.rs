@@ -47,6 +47,12 @@ extern "C" {
     );
     fn upsample(dst: *mut f64, input: *const f64, info: *mut ResamplerInfo);
     fn downsample(dst: *mut f64, input: *const f64, info: *mut ResamplerInfo);
+    fn filtering(
+      output_signal: *mut f64,
+      input_signal: *const f64,
+      filter_coeff: *const c_void,
+      buf_len: u64,
+    );
 }
 #[repr(C)]
 pub struct ResamplerInfo {
@@ -210,6 +216,7 @@ struct MyChart {
     modulator: FmModulator,
     demodulator: FmDeModulator,
     cvt_intermediate: CvtIntermediateFreq,
+    filtering: Filtering,
     // signals
     input_signal: [Vec<f64>; 2],
     up_sampled_input: [Vec<f64>; 2],
@@ -219,6 +226,7 @@ struct MyChart {
     resampled_composite: Vec<f64>,
     modulated_signal: Vec<f64>,
     intermediate: Vec<f64>,
+    filter_out: Vec<f64>,
     demodulated_signal: Vec<f64>,
     resampled_demodulate: Vec<f64>,
     // Re-Sampler
@@ -326,7 +334,7 @@ impl MyChart {
             fm_sample_rate,
             composite_buffer_size,
         );
-        let intermediate_buf_size = dbg!(modulated_buffer_size) / RATIO_FS_INTER_FS;
+        let resampled_buf_size = dbg!(modulated_buffer_size) / RATIO_FS_INTER_FS;
         let up_sample_to176m = ResamplerInfo::new_upsample_info(
             COMPOSITE_SAMPLE_RATE,
             fm_sample_rate,
@@ -336,7 +344,7 @@ impl MyChart {
             intermediate_fs,
             // fm_sample_rate,
             COMPOSITE_SAMPLE_RATE,
-            dbg!(intermediate_buf_size),
+            dbg!(resampled_buf_size),
             // modulated_buffer_size,
         );
 
@@ -370,6 +378,10 @@ impl MyChart {
                 CARRIER_FREQ,
                 INTERMEDIATE_FREQ,
             ),
+            filtering: Filtering::new(
+              fm_sample_rate as f64,
+              INTERMEDIATE_FREQ,
+            ),
             // Buffer
             input_signal: [vec![0.; BUFFER_SIZE], vec![0.; BUFFER_SIZE]],
             up_sampled_input: [
@@ -379,8 +391,9 @@ impl MyChart {
             composite_signal: vec![0.; composite_buffer_size],
             resampled_composite: vec![0.; modulated_buffer_size],
             modulated_signal: vec![0.; modulated_buffer_size],
-            intermediate: vec![0.; intermediate_buf_size],
-            demodulated_signal: vec![0.; intermediate_buf_size],
+            intermediate: vec![0.; modulated_buffer_size],
+            filter_out: vec![0.; resampled_buf_size],
+            demodulated_signal: vec![0.; resampled_buf_size],
             // intermediate: vec![0.; modulated_buffer_size],
             // demodulated_signal: vec![0.; modulated_buffer_size],
             resampled_demodulate: vec![0.; composite_buffer_size],
@@ -484,11 +497,16 @@ impl MyChart {
             //     self.intermediate.len(),
             //     self.demodulated_signal.len()
             // );
-            self.demodulator.process_to_buffer(
+            self.filtering.process(
                 &self.intermediate,
-                &mut self.demodulated_signal,
+                &mut self.filter_out,
             );
             let lap5 = timer.elapsed();
+            self.demodulator.process_to_buffer(
+                &self.filter_out,
+                &mut self.demodulated_signal,
+            );
+            let lap6 = timer.elapsed();
             // down-sample to 100kHz Order
             unsafe {
                 downsample(
@@ -497,7 +515,7 @@ impl MyChart {
                     &raw mut self.down_sample_to_100k,
                 );
             }
-            let lap6 = timer.elapsed();
+            let lap7 = timer.elapsed();
             // restore
             let l_out = unsafe {
                 std::slice::from_raw_parts_mut(
@@ -524,7 +542,7 @@ impl MyChart {
                 l_out,
                 r_out,
             );
-            let lap7 = timer.elapsed();
+            let lap8 = timer.elapsed();
             let _ = self.down_sampler_to_output[0].process(
                 Some(&self.restored_signal[0]),
                 //  Some(&self.resampled_demodulate),
@@ -542,10 +560,11 @@ impl MyChart {
             println!("  - Up-Sample: {:?}", lap2 - lap1);
             println!("  - Modulate: {:?}", lap3 - lap2);
             println!("  - Cvt-IntermediateFreq: {:?}", lap4 - lap3);
-            println!("  - De-Modulate: {:?}", lap5 - lap4);
-            println!("  - Down-Sample: {:?}", lap6 - lap5);
-            println!("  - Restore: {:?}", lap7 - lap6);
-            println!("  - Down-Sample: {:?}", end_time - lap7);
+            println!("  - Filtering: {:?}", lap5 - lap4);
+            println!("  - De-Modulate: {:?}", lap6 - lap5);
+            println!("  - Down-Sample: {:?}", lap7 - lap6);
+            println!("  - Restore: {:?}", lap8 - lap7);
+            println!("  - Down-Sample: {:?}", end_time - lap8);
             // println!("Buffer Size: {}/ Resampled Size: {:?}", self.modulated_signal.len(),vhf_write_size);
             // println!("Finally Buffer Size: {}/ Resampled Size: {:?}", self.output_signal[0].len(),down_sampled_size);
             self.render_times += 1;

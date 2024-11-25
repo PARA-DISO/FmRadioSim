@@ -168,6 +168,10 @@ void convert_intermediate_freq(
       f64x2 stage2_b_lo_tmp = _mm_unpackhi_pd(o1, o3);
       f64x2 stage2_a_hi_tmp = _mm_unpackhi_pd(o4, o6);
       f64x2 stage2_b_hi_tmp = _mm_unpackhi_pd(o5, o7);
+      // f64x2 out_a_lo_tmp = _mm_unpackhi_pd(o0, o2);
+      f64x2 out_b_lo_tmp = _mm_unpacklo_pd(o1, o3);
+      // f64x2 out_a_hi_tmp = _mm_unpackhi_pd(o4, o6);
+      f64x2 out_b_hi_tmp = _mm_unpacklo_pd(o5, o7);
       stage1_a_lo = _mm_mul_pd(sig_a_lo,coeff_a);
       stage1_b_lo = _mm_mul_pd(sig_a_hi,coeff_a);
       stage1_a_hi = _mm_mul_pd(sig_b_lo,coeff_a);
@@ -176,7 +180,10 @@ void convert_intermediate_freq(
       stage2_b_lo = _mm_mul_pd(stage2_b_lo_tmp,coeff_a);
       stage2_a_hi = _mm_mul_pd(stage2_a_hi_tmp,coeff_a);
       stage2_b_hi = _mm_mul_pd(stage2_b_hi_tmp,coeff_a);
-      output_signal[i >> 2] = 4*_mm_cvtsd_f64(o0);
+      _mm_store_pd(output_signal + i, out_b_lo_tmp);
+      _mm_store_pd(output_signal + i + 2, out_b_hi_tmp);
+
+      // output_signal[i >> 2] = 4*_mm_cvtsd_f64(o0);
       // output_signal[i >> 2] = 1*_mm_cvtsd_f64(slo);
       next_cos = _mm256_cos_pd(angle);
     }
@@ -495,4 +502,14 @@ void downsample(f64* dst, f64* input, ResamplerInfo* info) {
     dst[j] = input[i];
   }
   // printf("end down sample\n");
+}
+
+void filtering(f64* dst, f64* input, FilterCoeffs* coeffs,usize buf_len) {
+  for (usize i = 0; i < buf_len; i+=4)
+  {
+    f64x2 sig1 = _mm_load_pd(input + i);
+    f64x2 sig2 = _mm_load_pd(input + i + 2);
+    dst[i>>2] = 4*_mm_cvtsd_f64(sig1);
+  }
+  
 }
