@@ -159,7 +159,7 @@ pub struct Bpf {
 impl Bpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
     pub fn new(sample_rate: f64, cut_off: f64, bw: f64) -> Bpf {
-      let omega = TAU *  cut_off / sample_rate;
+      let omega = TAU *  dbg!(cut_off) / dbg!(sample_rate);
       let alpha = (omega).sin() * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
       
       let a0 =  1.0 + alpha;
@@ -169,11 +169,11 @@ impl Bpf {
       let b1 =  0.0;
       let b2 = -alpha;
       Self {
-        c0: b0 / a0,
-        c1: b1 / a0,
-        c2: b2 / a0,
-        c3: a1 / a0,
-        c4: a2 / a0,
+        c0: dbg!(b0 / a0),
+        c1: dbg!(b1 / a0),
+        c2: dbg!(b2 / a0),
+        c3: dbg!(a1 / a0),
+        c4: dbg!(a2 / a0),
       }
     }
     // pub fn process(&mut self, signal: &mut [f64]) {

@@ -57,7 +57,7 @@ impl CompositeSignal {
             let cos = theta.cos();
             let double_sin = cos * theta.sin() * 2.;
             let b = (l - r) * double_sin;
-            buffer[i] = a + b + cos;
+            buffer[i] = (a + b + cos)/3.;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);
@@ -129,7 +129,7 @@ impl RestoredSignal {
                 self.hpf.process_without_buffer(
                     remove_pilot,
                     &mut self.filter_info[3],
-                ) * 2.
+                ) * -2.
                     * sin,
                 &mut self.filter_info[2],
             ); // L-R
@@ -146,8 +146,8 @@ impl RestoredSignal {
             let r = self
                 .de_emphasis
                 .process_without_buffer(r, &mut self.de_emphasis_info[1]);
-            l_buffer[i] = l;
-            r_buffer[i] = r;
+            l_buffer[i] = l*3.;
+            r_buffer[i] = r*3.;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);

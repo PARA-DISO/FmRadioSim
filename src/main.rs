@@ -160,7 +160,7 @@ impl Application for State {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // window::frames().map(|_| Message::Tick)
-        time::every(time::Duration::from_millis(1000)).map(|_| Message::Tick )
+        time::every(time::Duration::from_millis(500)).map(|_| Message::Tick )
     }
 }
 // use std::collections::VecDeque;
@@ -180,10 +180,11 @@ const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 180_000_000;
 // const FM_MODULATION_SAMPLE_RATE: usize = 192_000;
 // const CARRIER_FREQ: f64 = 10_700_000f64;
-const CARRIER_FREQ:f64 =       79_500_000f64;
+// const CARRIER_FREQ:f64 =       79_500_000f64;
+const CARRIER_FREQ:f64 =       84_700_000f64;
 const INTERMEDIATE_FREQ: f64 = 10_700_000f64;
-// const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
-const SIGNAL_MAX_FREQ: f64 = 75_000.;
+const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.;
+// const SIGNAL_MAX_FREQ: f64 = 75_000.;
 const RATIO_FS_INTER_FS: usize = 4;
 // const CARRIER_FREQ: f64 = 4400.*4.;
 // const INTERMEDIATE_FREQ: f64 = 4400f64;
@@ -192,8 +193,9 @@ const RATIO_FS_INTER_FS: usize = 4;
 // const INTERMEDIATE_FREQ: f64 = 10_7f64;
 const CUT_OFF: f64 = 0.;
 const NOISE: f32 = -70.;
+// const HALF_BAND_WIDTH:f64 = 200_000.;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 3;
+const RENDER_MAX: usize = 10;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
 use fm_modulator::*;
@@ -593,9 +595,9 @@ impl Chart<Message> for MyChart {
             "L In",
             "R In",
             "Composite",
-            "FM Modulated",
+            "Freq Modulated",
             "Intermediate",
-            "FM Demodulated",
+            "Freq Demodulated",
             "L Out",
             "R Out",
             "Intermediate Spectrum",

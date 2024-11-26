@@ -27,6 +27,14 @@ typedef struct {
   // FilterCoeffs filter_coeff;
   f64 filter_info[16];
 } CnvFiInfos;
+typedef struct {
+  f64 prev_sig[2];
+  f64 prev_prev_sig[2];
+  f64 prev_out[2];
+  f64 prev_prev_out[2];
+  f64 stage[4];
+  FilterCoeffs coeff;
+} FilteringInfo;
 // typedef struct {
 //   f64 angle;
 //   f64 prev_sin;
@@ -68,4 +76,4 @@ typedef struct {
 } ResamplerInfo;
 void upsample(f64* dst, f64* input, ResamplerInfo* info);
 void downsample(f64* dst, f64* input, ResamplerInfo* info);
-void filtering(f64* dst, f64* input, FilterCoeffs* coeffs,u64 buf_len);
+void filtering(f64* dst, f64* input, FilteringInfo* info,u64 buf_len);

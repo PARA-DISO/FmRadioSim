@@ -195,8 +195,14 @@ impl FmDeModulator {
         }
     }
 }
+#[repr(C)]
 #[derive(Default)]
 pub struct Filtering {
+  prev_sig: [f64;2],
+  prev_prev_sig: [f64;2],
+  prev_out: [f64;2],
+  prev_prev_out: [f64;2],
+  stage: [f64;4],
   filter_coeff: Bpf,
 }
 impl Filtering {
@@ -211,7 +217,7 @@ impl Filtering {
       unsafe {fm_sys::filtering(
         dst.as_mut_ptr(),
         input.as_ptr(),
-        &raw const self.filter_coeff as *const core::ffi::c_void,
+        self as *mut Self,
         input.len() as u64
       )}
     }
@@ -251,7 +257,7 @@ mod fm_sys {
       pub fn filtering(
         output_signal: *mut f64,
         input_signal: *const f64,
-        filter_coeff: *const c_void,
+        filter_info: *mut crate::fm_modulator::Filtering,
         buf_len: u64,
       );
   }
