@@ -1,6 +1,6 @@
 pub mod composite;
 pub mod filter;
-pub mod fm_modulator;
+pub mod modulator;
 #[inline]
 pub fn get_8x_sample_rate(fs1: usize, fs2: usize) -> usize {
     let tmp = (fs1 as f64 / fs2 as f64).ceil() as usize;

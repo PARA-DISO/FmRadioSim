@@ -148,33 +148,35 @@ impl Hpf {
         buf
     }
 }
+#[repr(C)]
 #[derive(Default)]
 pub struct Bpf {
-  c0: f64,
-  c1: f64,
-  c2: f64,
-  c3: f64,
-  c4: f64,
+    c0: f64,
+    c1: f64,
+    c2: f64,
+    c3: f64,
+    c4: f64,
 }
 impl Bpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
     pub fn new(sample_rate: f64, cut_off: f64, bw: f64) -> Bpf {
-      let omega = TAU *  dbg!(cut_off) / dbg!(sample_rate);
-      let alpha = (omega).sin() * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
-      
-      let a0 =  1.0 + alpha;
-      let a1 = -2.0 * omega.cos();
-      let a2 =  1.0 - alpha;
-      let b0 =  alpha;
-      let b1 =  0.0;
-      let b2 = -alpha;
-      Self {
-        c0: dbg!(b0 / a0),
-        c1: dbg!(b1 / a0),
-        c2: dbg!(b2 / a0),
-        c3: dbg!(a1 / a0),
-        c4: dbg!(a2 / a0),
-      }
+        let omega = TAU * dbg!(cut_off) / dbg!(sample_rate);
+        let alpha = (omega).sin()
+            * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
+
+        let a0 = 1.0 + alpha;
+        let a1 = -2.0 * omega.cos();
+        let a2 = 1.0 - alpha;
+        let b0 = alpha;
+        let b1 = 0.0;
+        let b2 = -alpha;
+        Self {
+            c0: dbg!(b0 / a0),
+            c1: dbg!(b1 / a0),
+            c2: dbg!(b2 / a0),
+            c3: dbg!(a1 / a0),
+            c4: dbg!(a2 / a0),
+        }
     }
     // pub fn process(&mut self, signal: &mut [f64]) {
     //     for i in 0..signal.len() {

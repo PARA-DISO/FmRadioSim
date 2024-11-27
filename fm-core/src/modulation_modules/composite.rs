@@ -1,7 +1,7 @@
 /**
  * コンポジット信号を作成、復元するコード群
 */
-use crate::filter::{Emphasis, FilterInfo, Hpf, Lpf, Notch};
+use super::filter::{Emphasis, FilterInfo, Hpf, Lpf, Notch};
 use std::f64::consts::TAU;
 
 use super::filter::Deemphasis;
@@ -30,7 +30,7 @@ impl CompositeSignal {
     pub fn sample_rate(&self) -> f64 {
         self.sample_rate
     }
-    pub fn process_to_buffer(
+    pub fn process(
         &mut self,
         l_channel: &[f64],
         r_channel: &[f64],
@@ -57,13 +57,13 @@ impl CompositeSignal {
             let cos = theta.cos();
             let double_sin = cos * theta.sin() * 2.;
             let b = (l - r) * double_sin;
-            buffer[i] = (a + b + cos)/3.;
+            buffer[i] = (a + b + cos) / 3.;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);
     }
 }
-pub struct RestoredSignal {
+pub struct RestoreSignal {
     input_filter: Lpf,
     lpf16: Lpf,
     hpf: Hpf,
@@ -74,7 +74,7 @@ pub struct RestoredSignal {
     filter_info: [FilterInfo; 8],
     de_emphasis_info: [FilterInfo; 2],
 }
-impl RestoredSignal {
+impl RestoreSignal {
     const PILOT_FREQ: f64 = 19_000f64;
     const CARRIER_FREQ: f64 = Self::PILOT_FREQ * 2.;
     const CUT_OFF_FREQ: f64 = 15_000f64;
@@ -95,7 +95,7 @@ impl RestoredSignal {
             de_emphasis_info: [FilterInfo::default(); 2],
         }
     }
-    pub fn process_to_buffer(
+    pub fn process(
         &mut self,
         signal: &[f64],
         l_buffer: &mut [f64],
@@ -146,8 +146,8 @@ impl RestoredSignal {
             let r = self
                 .de_emphasis
                 .process_without_buffer(r, &mut self.de_emphasis_info[1]);
-            l_buffer[i] = l*3.;
-            r_buffer[i] = r*3.;
+            l_buffer[i] = l * 3.;
+            r_buffer[i] = r * 3.;
             self.t += 1. / self.sample_rate;
         }
         // self.t = self.t.rem_euclid(1.);

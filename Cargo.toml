@@ -8,8 +8,10 @@ crate-type=["cdylib"]
 rustflags = ["-Z", "threads=8","-g"]
 [profile.release]
 # lto = true
-[build-dependencies]
-cc = "1.1.31"
+[workspace]
+member=["fm-core"]
+# [build-dependencies]
+# cc = "1.1.31"
 
 [dependencies]
 iced = { version = "0.12.1", features = ["canvas","tokio"] }
@@ -24,10 +26,10 @@ plotters-iced = "0.10.0"
 # rand_distr = "0.4.3"
 # rand_mt = "4.2.2"
 rubato = "0.16.0"
-libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}
+# libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}
 # sfmt = "0.7.0"
 spectrum-analyzer = "1.5.0"
-
+fm-core={path = "fm-core"}
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
 # simplelog = "0.12.2"
