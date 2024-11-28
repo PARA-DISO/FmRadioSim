@@ -1,0 +1,12 @@
+[package]
+name = "fm-core"
+version = "0.1.0"
+edition = "2021"
+# [lib]
+# crate-type=["cdylib"]
+[build]
+rustflags = ["-Z", "threads=8","-g"]
+[build-dependencies]
+cc = "1.1.31"
+[dependencies]
+libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}

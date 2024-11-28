@@ -1,8 +1,8 @@
 use std::f64::consts::TAU;
-use iced::widget::shader::wgpu::naga::back::msl::sampler::Filter;
+// use iced::widget::shader::wgpu::naga::back::msl::sampler::Filter;
 
 // pub type SampleType = f32;
-use crate::filter::{fast_filter, FilterInfo, Lpf,Bpf};
+use super::filter::{fast_filter, Bpf, FilterInfo, Lpf};
 
 #[repr(C)]
 #[derive(Default)]
@@ -20,7 +20,10 @@ pub struct CnvFiInfos {
 impl CnvFiInfos {
     pub fn new(fs: f64, delta_angle: f64, cut_off: f64) -> Self {
         Self {
-            filter_coeff: dbg!(fast_filter::get_lpf_coeff(dbg!(fs), dbg!(cut_off))),
+            filter_coeff: dbg!(fast_filter::get_lpf_coeff(
+                dbg!(fs),
+                dbg!(cut_off)
+            )),
             // filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
             angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
             delta_angle,
@@ -48,7 +51,7 @@ pub struct DemodulationInfo {
     filter_info: [f64; 16],
 }
 impl DemodulationInfo {
-    pub fn new(fs: f64, fc:f64 , cutoff: f64) -> Self {
+    pub fn new(fs: f64, fc: f64, cutoff: f64) -> Self {
         let delta_angle = dbg!(TAU * dbg!(fc) * (1. / fs));
         Self {
             angle: [0., delta_angle, 2. * delta_angle, 3. * delta_angle],
@@ -75,7 +78,7 @@ impl CvtIntermediateFreq {
     }
     pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
         unsafe {
-            fm_sys::convert_intermediate_freq(
+            crate::convert_intermediate_freq(
                 dst.as_mut_ptr(),
                 input.as_ptr(),
                 self.sample_periodic,
@@ -88,7 +91,7 @@ impl CvtIntermediateFreq {
     }
 }
 
-pub struct FmModulator {
+pub struct Modulator {
     integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
     t: [f64; 4], // 時刻t
@@ -97,7 +100,7 @@ pub struct FmModulator {
     carrier_freq: f64,
     modulation_index: f64,
 }
-impl FmModulator {
+impl Modulator {
     // pub fn new() -> Self {
     //     Self {
     //         integral: 0.0,
@@ -129,7 +132,7 @@ impl FmModulator {
             carrier_freq: f,
         }
     }
-    pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
+    pub fn process(&mut self, signal: &[f64], buffer: &mut [f64]) {
         // for i in 0..signal.len() {
         //     self.integral += self.prev_sig + signal[i];
         //     self.prev_sig = signal[i];
@@ -143,7 +146,7 @@ impl FmModulator {
 
         // self.t[0] = self.t[0].rem_euclid(TAU);
         unsafe {
-            fm_sys::fm_modulate(
+            crate::fm_modulate(
                 buffer.as_mut_ptr(),
                 signal.as_ptr(),
                 &raw mut self.prev_sig,
@@ -157,7 +160,7 @@ impl FmModulator {
         };
     }
 }
-pub struct FmDeModulator {
+pub struct DeModulator {
     // t: f64, // 時刻t
     // prev_sig: [f64; 2],
     info: DemodulationInfo,
@@ -166,7 +169,7 @@ pub struct FmDeModulator {
     // result_filter: Lpf,
     // filter_info: [FilterInfo; 4],
 }
-impl FmDeModulator {
+impl DeModulator {
     pub fn from(f: f64, sample_rate: f64, cut_off: f64) -> Self {
         // println!("periodic: {}", (1. / sample_rate));
         // println!("carrier : cutoff = {}",f / cut_off);
@@ -174,7 +177,7 @@ impl FmDeModulator {
         Self {
             // t: 0.0,
             // prev_sig: Default::default(),
-            info: DemodulationInfo::new(sample_rate, f,cut_off),
+            info: DemodulationInfo::new(sample_rate, f, cut_off),
             // sample_rate,
             sample_period: (1. / sample_rate),
             carrier_freq: f,
@@ -182,9 +185,9 @@ impl FmDeModulator {
             // filter_info: Default::default(),
         }
     }
-    pub fn process_to_buffer(&mut self, signal: &[f64], buffer: &mut [f64]) {
+    pub fn process(&mut self, signal: &[f64], buffer: &mut [f64]) {
         unsafe {
-            fm_sys::fm_demodulate(
+            crate::fm_demodulate(
                 buffer.as_mut_ptr(),
                 signal.as_ptr(),
                 self.sample_period,
@@ -195,70 +198,73 @@ impl FmDeModulator {
         }
     }
 }
-#[repr(C)]
+
 #[derive(Default)]
-pub struct Filtering {
-  prev_sig: [f64;2],
-  prev_prev_sig: [f64;2],
-  prev_out: [f64;2],
-  prev_prev_out: [f64;2],
-  stage: [f64;4],
-  filter_coeff: Bpf,
+#[repr(C)]
+pub struct BandPassFilter {
+    prev_sig: [f64; 2],
+    prev_prev_sig: [f64; 2],
+    prev_out: [f64; 2],
+    prev_prev_out: [f64; 2],
+    stage: [f64; 4],
+    filter_coeff: Bpf,
 }
-impl Filtering {
-    const BAND_WIDTH:f64 = 0.2; // +- 124kHz when fc = 10.7MHz
-    pub fn new(fs: f64,cutoff: f64) -> Self {
-      Self {
-        filter_coeff: Bpf::new(fs, cutoff,Self::BAND_WIDTH),
-        ..Default::default()
-      }
+impl BandPassFilter {
+    const BAND_WIDTH: f64 = 0.2; // +- 124kHz when fc = 10.7MHz
+    pub fn new(fs: f64, cutoff: f64) -> Self {
+        Self {
+            filter_coeff: Bpf::new(fs, cutoff, Self::BAND_WIDTH),
+            ..Default::default()
+        }
     }
     pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
-      unsafe {fm_sys::filtering(
-        dst.as_mut_ptr(),
-        input.as_ptr(),
-        self as *mut Self,
-        input.len() as u64
-      )}
+        unsafe {
+            crate::filtering(
+                dst.as_mut_ptr(),
+                input.as_ptr(),
+                self as *mut Self,
+                input.len() as u64,
+            )
+        }
     }
 }
 
-mod fm_sys {
-  use std::ffi::c_void;
-  extern "C" {
-      pub fn fm_modulate(
-          output_signal: *mut f64,
-          input_signal: *const f64,
-          prev_sig: *mut f64,
-          sum: *mut f64,
-          sample_periodic: f64,
-          angle: *mut f64,
-          modulate_index: f64,
-          fc: f64,
-          buf_len: u64,
-      );
-      pub fn fm_demodulate(
-          output_signal: *mut f64,
-          input_signal: *const f64,
-          sample_period: f64,
-          carrier_freq: f64,
-          info: *mut crate::fm_modulator::DemodulationInfo,
-          buf_len: u64,
-      );
-      pub fn convert_intermediate_freq(
-          output_signal: *mut f64,
-          input_signal: *const f64,
-          sample_period: f64,
-          fc: f64,
-          fi: f64,
-          info: *mut crate::fm_modulator::CnvFiInfos,
-          buf_len: usize,
-      );
-      pub fn filtering(
-        output_signal: *mut f64,
-        input_signal: *const f64,
-        filter_info: *mut crate::fm_modulator::Filtering,
-        buf_len: u64,
-      );
-  }
-}
+// mod fm_sys {
+//   use std::ffi::c_void;
+//   extern "C" {
+//       pub fn fm_modulate(
+//           output_signal: *mut f64,
+//           input_signal: *const f64,
+//           prev_sig: *mut f64,
+//           sum: *mut f64,
+//           sample_periodic: f64,
+//           angle: *mut f64,
+//           modulate_index: f64,
+//           fc: f64,
+//           buf_len: u64,
+//       );
+//       pub fn fm_demodulate(
+//           output_signal: *mut f64,
+//           input_signal: *const f64,
+//           sample_period: f64,
+//           carrier_freq: f64,
+//           info: *mut crate::fm_modulator::DemodulationInfo,
+//           buf_len: u64,
+//       );
+//       pub fn convert_intermediate_freq(
+//           output_signal: *mut f64,
+//           input_signal: *const f64,
+//           sample_period: f64,
+//           fc: f64,
+//           fi: f64,
+//           info: *mut crate::fm_modulator::CnvFiInfos,
+//           buf_len: usize,
+//       );
+//       pub fn filtering(
+//         output_signal: *mut f64,
+//         input_signal: *const f64,
+//         filter_info: *mut crate::fm_modulator::Filtering,
+//         buf_len: u64,
+//       );
+//   }
+// }
