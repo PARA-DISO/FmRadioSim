@@ -191,12 +191,12 @@ impl FmRadioSim {
             restored_signal_r: vec![0.; composite_buffer_size],
         }
     }
-    pub fn process(&mut self, input: &[f32], dst: &mut [f32]) {
+    pub fn process(&mut self, input_l: &[f32],input_r: &[f32], dst_l: &mut [f32],dst_r:&mut [f32]) {
         // de-interleave
-        for (i, lr) in input.chunks_exact(2).enumerate() {
+        for (i, lr) in input_l.iter().zip(input_r).enumerate() {
             unsafe {
-                *self.tmp_buffer[0].get_unchecked_mut(i) = lr[0] as f64;
-                *self.tmp_buffer[1].get_unchecked_mut(i) = lr[1] as f64;
+                *self.tmp_buffer[0].get_unchecked_mut(i) = *lr.0 as f64;
+                *self.tmp_buffer[1].get_unchecked_mut(i) = *lr.1 as f64;
             }
         }
         // up sample
@@ -260,10 +260,10 @@ impl FmRadioSim {
             &mut self.tmp_buffer[1],
         );
         // interleave
-        for (i, lr) in dst.chunks_exact_mut(2).enumerate() {
+        for (i, lr) in dst_l.iter_mut().zip(dst_r.iter_mut()).enumerate() {
             unsafe {
-                lr[0] = *self.tmp_buffer[0].get_unchecked(i) as f32;
-                lr[1] = *self.tmp_buffer[1].get_unchecked(i) as f32;
+                *lr.0 = *self.tmp_buffer[0].get_unchecked(i) as f32;
+                *lr.1 = *self.tmp_buffer[1].get_unchecked(i) as f32;
             }
         }
     }
