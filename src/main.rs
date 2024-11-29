@@ -89,8 +89,8 @@ const BUFFER_SIZE: usize = 256;
 const AUDIO_SAMPLE_RATE: usize = 44_100;
 
 const SIGNAL_FREQ: f64 = 440f64;
-const CARRIER_FREQ: f64 = 84_700_000f64;
-
+// const CARRIER_FREQ: f64 = 84_700_000f64;
+const CARRIER_FREQ: f64 = 79_500_000f64;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 10;
 // is modulate audio sig
@@ -114,6 +114,9 @@ impl MyChart {
             "Signal time per frame: {}ms",
             (BUFFER_SIZE as f64) / AUDIO_SAMPLE_RATE as f64 * 1000f64
         );
+        let mut fm_radio_sim =
+            FmRadioSim::from(AUDIO_SAMPLE_RATE, BUFFER_SIZE, CARRIER_FREQ);
+        fm_radio_sim.init_thread();
         Self {
             render_times: 0,
             t: 0.0,
@@ -123,11 +126,7 @@ impl MyChart {
 
             output_signal_l: vec![0.; BUFFER_SIZE],
             output_signal_r: vec![0.; BUFFER_SIZE],
-            fm_radio_sim: FmRadioSim::from(
-                AUDIO_SAMPLE_RATE,
-                BUFFER_SIZE,
-                CARRIER_FREQ,
-            ),
+            fm_radio_sim,
             continue_flag: true,
         }
     }
@@ -162,7 +161,7 @@ impl MyChart {
                     * A as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
-
+            println!("start processing");
             // up-sample
             let timer = Instant::now();
             self.fm_radio_sim.process(

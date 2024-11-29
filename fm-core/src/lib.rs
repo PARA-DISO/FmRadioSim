@@ -7,6 +7,13 @@ use libsoxr::{
 use modulation_modules::*;
 mod resampler;
 use resampler::*;
+mod utils;
+use std::{
+    ops::{Deref, DerefMut},
+    sync::{Arc, Mutex},
+    thread,
+};
+use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer, Shareable};
 #[link(name = "freq_modulation")]
 extern "C" {
     fn fm_modulate(
@@ -53,10 +60,10 @@ pub struct FmRadioSim {
     // Simulation Modules
     composite: composite::CompositeSignal,
     restore: composite::RestoreSignal,
-    modulator: modulator::Modulator,
+    modulator: Shareable<modulator::Modulator>,
     demodulator: modulator::DeModulator,
-    freq_converter: modulator::CvtIntermediateFreq,
-    bandpass_filter: modulator::BandPassFilter,
+    freq_converter: Shareable<modulator::CvtIntermediateFreq>,
+    bandpass_filter: Shareable<modulator::BandPassFilter>,
     // resampler
     upsampler: [Soxr; 2],
     downsampler: [Soxr; 2],
@@ -67,14 +74,18 @@ pub struct FmRadioSim {
     tmp_buffer: [Vec<f64>; 2],      // audio sample rate
     audio_in_buffer: [Vec<f64>; 2], // 125kHz
     composite_signal: Vec<f64>,     // 125kHz
-    up_sampled_signal: Vec<f64>,    // 192MHz
-    modulate_signal: Vec<f64>,      // 192MHz
-    intermediate_signal: Vec<f64>,  // 192MHz (inner 384MHz)
-    intermediate_signal_out: Vec<f64>, // 48MHz
-    demodulate_signal: Vec<f64>,    // 48MHz
-    post_down_sample: Vec<f64>,     // 125kHz
+    up_sampled_signal: PipeLineBuffer, // 192MHz
+    modulate_signal: PipeLineBuffer, // 192MHz
+    intermediate_signal: PipeLineBuffer, // 192MHz (inner 384MHz)
+    intermediate_signal_out: PipeLineBuffer, // 48MHz
+    // demodulate_signal: PipeLineBuffer, // 48MHz
+    demodulate_signal: Vec<f64>,
+    post_down_sample: Vec<f64>, // 125kHz
     restored_signal_l: Vec<f64>,
     restored_signal_r: Vec<f64>, // 125kHz
+    // Thread Pool (For management)
+    read_state: bool,
+    execute_permission: Vec<ExecFlag>,
 }
 impl FmRadioSim {
     // define constants
@@ -151,19 +162,19 @@ impl FmRadioSim {
             restore: composite::RestoreSignal::new(
                 Self::COMPOSITE_SAMPLE_RATE as f64,
             ),
-            modulator: modulator::Modulator::from(
+            modulator: sharable!(modulator::Modulator::from(
                 carrier_freq,
                 fm_sample_rate as f64,
-            ),
-            freq_converter: modulator::CvtIntermediateFreq::new(
+            )),
+            freq_converter: sharable!(modulator::CvtIntermediateFreq::new(
                 fm_sample_rate as f64,
                 carrier_freq,
                 Self::INTERMEDIATE_FREQ,
-            ),
-            bandpass_filter: modulator::BandPassFilter::new(
+            )),
+            bandpass_filter: sharable!(modulator::BandPassFilter::new(
                 fm_sample_rate as f64,
                 Self::INTERMEDIATE_FREQ,
-            ),
+            )),
             demodulator: modulator::DeModulator::from(
                 Self::INTERMEDIATE_FREQ,
                 intermediate_fs as f64,
@@ -181,17 +192,155 @@ impl FmRadioSim {
                 vec![0.; composite_buffer_size],
             ],
             composite_signal: vec![0.; modulated_buffer_size],
-            up_sampled_signal: vec![0.; modulated_buffer_size],
-            modulate_signal: vec![0.; modulated_buffer_size],
-            intermediate_signal: vec![0.; modulated_buffer_size],
-            intermediate_signal_out: vec![0.; intermediate_buffer_size],
+            up_sampled_signal: generate_pipline_buffer(modulated_buffer_size),
+            modulate_signal: generate_pipline_buffer(modulated_buffer_size),
+            intermediate_signal: generate_pipline_buffer(modulated_buffer_size),
+            intermediate_signal_out: generate_pipline_buffer(
+                intermediate_buffer_size,
+            ),
+            // demodulate_signal: generate_pipline_buffer(
+            //     intermediate_buffer_size,
+            // ),
             demodulate_signal: vec![0.; intermediate_buffer_size],
             post_down_sample: vec![0.; composite_buffer_size],
             restored_signal_l: vec![0.; composite_buffer_size],
             restored_signal_r: vec![0.; composite_buffer_size],
+            //
+            read_state: true,
+            execute_permission: vec![
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+                exec_flag!(),
+            ],
         }
     }
-    pub fn process(&mut self, input_l: &[f32],input_r: &[f32], dst_l: &mut [f32],dst_r:&mut [f32]) {
+    pub fn init_thread(&mut self) {
+        // let modulate_counter = Arc::new(Mutex::new(0));
+        // Buffer
+        let up_sample_signal_outer1 = Arc::clone(&self.up_sampled_signal);
+        let modulate_signal_outer1 = Arc::clone(&self.modulate_signal);
+        let intermediate_signal_outer1 = Arc::clone(&self.intermediate_signal);
+        let modulate_signal_outer2 = Arc::clone(&self.modulate_signal);
+        let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
+        let intermediate_signal_out1 =
+            Arc::clone(&self.intermediate_signal_out);
+        // Modules
+        let modulator = Arc::clone(&self.modulator);
+        let freq_converter = Arc::clone(&self.freq_converter);
+        let bandpass_filter = Arc::clone(&self.bandpass_filter);
+        let listener0 = Arc::clone(&self.execute_permission[0]);
+        let listener1 = Arc::clone(&self.execute_permission[1]);
+        let listener2 = Arc::clone(&self.execute_permission[2]);
+        // Modulation Process
+        let _ = thread::spawn(move || {
+            let mut counter = 0;
+            let up_sample_signal = Arc::clone(&up_sample_signal_outer1);
+            let modulate_signal = Arc::clone(&modulate_signal_outer1);
+            let (lock, cvar) = &*listener0;
+            loop {
+                cvar.wait(lock.lock().unwrap()).unwrap();
+                *lock.lock().unwrap() = true;
+                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+                    (
+                        up_sample_signal[1].lock().unwrap(),
+                        modulate_signal[0].lock().unwrap(),
+                    )
+                } else {
+                    (
+                        up_sample_signal[0].lock().unwrap(),
+                        modulate_signal[1].lock().unwrap(),
+                    )
+                };
+                modulator
+                    .lock()
+                    .unwrap()
+                    .process(&read_buffer, &mut write_buffer);
+                // println!("hoge");
+                counter += 1;
+            }
+        });
+        // Convert-fi Process
+        let _ = thread::spawn(move || {
+            let mut counter = 0;
+            let intermediate_signal = Arc::clone(&intermediate_signal_outer1);
+            let modulate_signal = Arc::clone(&modulate_signal_outer2);
+            
+            let (lock, cvar) = &*listener1;
+            loop {
+                cvar.wait(lock.lock().unwrap()).unwrap();
+                *lock.lock().unwrap() = true;
+                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+                    (
+                        modulate_signal[1].lock().unwrap(),
+                        intermediate_signal[0].lock().unwrap(),
+                    )
+                } else {
+                    (
+                        modulate_signal[0].lock().unwrap(),
+                        intermediate_signal[1].lock().unwrap(),
+                    )
+                };
+                freq_converter
+                    .lock()
+                    .unwrap()
+                    .process(&read_buffer, &mut write_buffer);
+                counter += 1;
+                // println!("fuga");
+            }
+        });
+        // BPF
+        let _ = thread::spawn(move || {
+            let mut counter = 0;
+            let intermediate_signal = Arc::clone(&intermediate_signal_outer2);
+            let intermediate_signal_out = Arc::clone(&intermediate_signal_out1);
+            let (lock, cvar) = &*listener2;
+            loop {
+                cvar.wait(lock.lock().unwrap()).unwrap();
+                *lock.lock().unwrap() = true;
+                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+                    (
+                        intermediate_signal[1].lock().unwrap(),
+                        intermediate_signal_out[0].lock().unwrap(),
+                    )
+                } else {
+                    (
+                        intermediate_signal[0].lock().unwrap(),
+                        intermediate_signal_out[1].lock().unwrap(),
+                    )
+                };
+                bandpass_filter
+                    .lock()
+                    .unwrap()
+                    .process(&read_buffer, &mut write_buffer);
+                counter += 1;
+                // println!("piyo");
+            }
+        });
+    }
+    pub fn process(
+        &mut self,
+        input_l: &[f32],
+        input_r: &[f32],
+        dst_l: &mut [f32],
+        dst_r: &mut [f32],
+    ) {
+        let (exe_state_0,cvar_0) = &*self.execute_permission[0];
+        let (exe_state_1, cvar_1) = &*self.execute_permission[1];
+        let (exe_state_2,cvar_2) = &*self.execute_permission[2];
+        // let (exe_state_3,cvar_3) = &*self.execute_permission[3];
+        *exe_state_0.lock().unwrap() = false;
+        *exe_state_1.lock().unwrap() = false;
+        *exe_state_2.lock().unwrap() = false;
+        // // *exe_state_3.lock().unwrap() = false;
+        cvar_0.notify_one();
+        cvar_1.notify_one();
+        cvar_2.notify_one();
+        // cvar_3.notify_one();
         // de-interleave
         for (i, lr) in input_l.iter().zip(input_r).enumerate() {
             unsafe {
@@ -214,29 +363,42 @@ impl FmRadioSim {
             &self.audio_in_buffer[1],
             &mut self.composite_signal,
         );
+
+        let mut up_sampled_signal = if self.read_state {
+            self.up_sampled_signal[0].lock().unwrap()
+        } else {
+            self.up_sampled_signal[1].lock().unwrap()
+        };
         //
         unsafe {
             upsample(
-                self.up_sampled_signal.as_mut_ptr(),
+                up_sampled_signal.deref_mut().as_mut_slice().as_mut_ptr(),
                 self.composite_signal.as_ptr(),
                 &raw mut self.upsampler_for_radio_waves,
             );
         }
+        // println!("check point1");
         //
-        self.modulator
-            .process(&self.up_sampled_signal, &mut self.modulate_signal);
-        // super heterodyne
-        self.freq_converter
-            .process(&self.modulate_signal, &mut self.intermediate_signal);
-        self.bandpass_filter.process(
-            &self.intermediate_signal,
-            &mut self.intermediate_signal_out,
-        );
+        // self.modulator
+        //     .process(&self.up_sampled_signal, &mut self.modulate_signal);
+        // // super heterodyne
+        // self.freq_converter
+        //     .process(&self.modulate_signal, &mut self.intermediate_signal);
+        // self.bandpass_filter.process(
+        //     &self.intermediate_signal,
+        //     &mut self.intermediate_signal_out,
+        // );
         // de-modulate
+        let intermediate_signal_out = if self.read_state {
+            self.intermediate_signal_out[1].lock().unwrap()
+        } else {
+            self.intermediate_signal_out[0].lock().unwrap()
+        };
         self.demodulator.process(
-            &self.intermediate_signal_out,
+            intermediate_signal_out.deref().as_slice(),
             &mut self.demodulate_signal,
         );
+        // println!("check point2");
         //
         unsafe {
             downsample(
@@ -266,6 +428,8 @@ impl FmRadioSim {
                 *lr.1 = *self.tmp_buffer[1].get_unchecked(i) as f32;
             }
         }
+        // println!("check point3");
+        self.read_state ^= true;
     }
 }
 fn generate_resampler(f1: f64, f2: f64) -> libsoxr::Result<Soxr> {
