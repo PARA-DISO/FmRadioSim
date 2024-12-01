@@ -1,0 +1,14 @@
+- __m128d _mm_shuffle_pd (__m128d a, __m128d b, int imm8)
+  - latency 1 / CPI 0.5 ~ 1
+- __m256 _mm256_set_m128d(__m128d hi, __m128d lo)
+  - latency 3 / CPI 1
+- __m128d _mm256_extractf128_pd(__m256d a, const int imm8)
+  - latency 3 / CPI 1
+- __m128d _mm_hadd_pd
+  - latency 5 ~ 7 / CPI 2
+- __m128d _mm_add_pd
+  - latency 2 ~ 4 / CPI 0.5
+- __m128d _mm_unpacklo_pd / _mm_unpackhi_pd
+  - latency 1 / CPI 1
+- __m128d _mm_mul_pd
+  - latency 4 / CPI 0.5

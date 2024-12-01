@@ -25,7 +25,8 @@ impl CnvFiInfos {
                 dbg!(cut_off)
             )),
             // filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
-            angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
+            // angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
+            angle: [0.,delta_angle,2.* delta_angle,3.* delta_angle],
             delta_angle,
             ..Default::default()
         }

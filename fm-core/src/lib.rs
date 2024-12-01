@@ -10,7 +10,7 @@ use resampler::*;
 mod utils;
 use std::{
     ops::{Deref, DerefMut},
-    sync::{Arc, Mutex},
+    sync::{Arc, Barrier, Mutex},
     thread,
 };
 use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer, Shareable};
@@ -53,6 +53,7 @@ extern "C" {
         buf_len: u64,
     );
 }
+
 pub struct FmRadioSim {
     // basic parameters
     audio_sample_rate: usize,
@@ -85,15 +86,19 @@ pub struct FmRadioSim {
     restored_signal_r: Vec<f64>, // 125kHz
     // Thread Pool (For management)
     read_state: bool,
-    execute_permission: Vec<ExecFlag>,
+    barrier: Arc<Barrier>
 }
 impl FmRadioSim {
     // define constants
-    const COMPOSITE_SAMPLE_RATE: usize = 125_000;
-    const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-    const INTERMEDIATE_FREQ: f64 = 10_700_000f64; // JISC6421:1994
-    const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.; // x2 Composite freq max
-    const RATIO_FS_INTER_FS: usize = 4;
+    pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
+    pub const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
+    pub const INTERMEDIATE_FREQ: f64 = 10_700_000f64; // JISC6421:1994
+    // pub const INTERMEDIATE_FREQ: f64 = 79_500_000f64 - 440f64;
+    pub const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.; // x2 Composite freq max
+    pub const RATIO_FS_INTER_FS: usize = 4;
+    // fn set_fs(&mut self) {
+
+    // }
     //
     pub fn from(
         audio_fs: usize,
@@ -207,17 +212,22 @@ impl FmRadioSim {
             restored_signal_r: vec![0.; composite_buffer_size],
             //
             read_state: true,
-            execute_permission: vec![
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-                exec_flag!(),
-            ],
+            barrier: Arc::new(Barrier::new(4)),
         }
+    }
+    pub fn get_intermediate(&self) -> &[f64] {
+      if self.read_state {
+         let array = (self.intermediate_signal_out[0]).lock().unwrap();
+         unsafe {
+          std::slice::from_raw_parts(array.as_ptr(),array.len())
+         }
+         
+      } else {
+        let array = (self.intermediate_signal_out[1]).lock().unwrap();
+        unsafe {
+          std::slice::from_raw_parts(array.as_ptr(),array.len())
+         }
+      }
     }
     pub fn init_thread(&mut self) {
         // let modulate_counter = Arc::new(Mutex::new(0));
@@ -233,18 +243,17 @@ impl FmRadioSim {
         let modulator = Arc::clone(&self.modulator);
         let freq_converter = Arc::clone(&self.freq_converter);
         let bandpass_filter = Arc::clone(&self.bandpass_filter);
-        let listener0 = Arc::clone(&self.execute_permission[0]);
-        let listener1 = Arc::clone(&self.execute_permission[1]);
-        let listener2 = Arc::clone(&self.execute_permission[2]);
+        let listener0 = Arc::clone(&self.barrier);
+        let listener1 = Arc::clone(&self.barrier);
+        let listener2 = Arc::clone(&self.barrier);
         // Modulation Process
         let _ = thread::spawn(move || {
             let mut counter = 0;
             let up_sample_signal = Arc::clone(&up_sample_signal_outer1);
             let modulate_signal = Arc::clone(&modulate_signal_outer1);
-            let (lock, cvar) = &*listener0;
+            
             loop {
-                cvar.wait(lock.lock().unwrap()).unwrap();
-                *lock.lock().unwrap() = true;
+                listener0.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
                     (
                         up_sample_signal[1].lock().unwrap(),
@@ -270,10 +279,8 @@ impl FmRadioSim {
             let intermediate_signal = Arc::clone(&intermediate_signal_outer1);
             let modulate_signal = Arc::clone(&modulate_signal_outer2);
             
-            let (lock, cvar) = &*listener1;
             loop {
-                cvar.wait(lock.lock().unwrap()).unwrap();
-                *lock.lock().unwrap() = true;
+              listener1.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
                     (
                         modulate_signal[1].lock().unwrap(),
@@ -298,10 +305,9 @@ impl FmRadioSim {
             let mut counter = 0;
             let intermediate_signal = Arc::clone(&intermediate_signal_outer2);
             let intermediate_signal_out = Arc::clone(&intermediate_signal_out1);
-            let (lock, cvar) = &*listener2;
+           
             loop {
-                cvar.wait(lock.lock().unwrap()).unwrap();
-                *lock.lock().unwrap() = true;
+              listener2.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
                     (
                         intermediate_signal[1].lock().unwrap(),
@@ -329,17 +335,7 @@ impl FmRadioSim {
         dst_l: &mut [f32],
         dst_r: &mut [f32],
     ) {
-        let (exe_state_0,cvar_0) = &*self.execute_permission[0];
-        let (exe_state_1, cvar_1) = &*self.execute_permission[1];
-        let (exe_state_2,cvar_2) = &*self.execute_permission[2];
-        // let (exe_state_3,cvar_3) = &*self.execute_permission[3];
-        *exe_state_0.lock().unwrap() = false;
-        *exe_state_1.lock().unwrap() = false;
-        *exe_state_2.lock().unwrap() = false;
-        // // *exe_state_3.lock().unwrap() = false;
-        cvar_0.notify_one();
-        cvar_1.notify_one();
-        cvar_2.notify_one();
+        self.barrier.wait();
         // cvar_3.notify_one();
         // de-interleave
         for (i, lr) in input_l.iter().zip(input_r).enumerate() {

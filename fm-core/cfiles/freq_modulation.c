@@ -81,7 +81,7 @@ void convert_intermediate_freq(
   f64 const fc, f64 const fi,
   CnvFiInfos* const info, const usize buf_len) {
     
-  #if ENABLE_TEST_CODE
+  #if ENABLE_UPSAMPLING
     // f64x4 prev = _mm256_load_pd(info->prev_sig);
     // stage: stage num - sig num
     // const f64x4 coeff  = _mm256_set1_pd(info->filter_coeff);
@@ -191,14 +191,6 @@ void convert_intermediate_freq(
     _mm256_store_pd(info->angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
     _mm256_store_pd(info->next_cos,next_cos);
     _mm256_store_pd(info->prev_cos,prev_cos);
-    // stage2_a_lo
-    // stage2_a_hi
-    // stage2_b_lo
-    // stage2_b_hi
-    // stage1_a_lo
-    // stage1_b_lo
-    // stage1_a_hi
-    // stage1_b_hi
     _mm_store_pd(info->stage,    stage2_a_lo);
     _mm_store_pd(info->stage + 2,stage2_a_hi);
     _mm_store_pd(info->stage + 4,stage2_b_lo);
@@ -207,97 +199,27 @@ void convert_intermediate_freq(
     _mm_store_pd(info->stage +10,stage1_b_lo);
     _mm_store_pd(info->stage +12,stage1_a_hi);
     _mm_store_pd(info->stage +14,stage1_b_hi);
-    // _mm_store_pd(info->filter_info,prev_sig);
-    // _mm_store_pd(info->filter_info+4,prev_prev_sig);
     _mm_store_pd(info->filter_info+8,prev_out);
-    // _mm_store_pd(info->filter_info+12,prev_prev_out);
-
   #else
-   
-    f64x4 prev = _mm256_load_pd(info->prev_sig);
-    // stage: stage num - sig num
-    const f64x4 coeff  = _mm256_set1_pd(info->filter_coeff);
-    
-    f64x4 prev_sig_a = _mm256_load_pd(info->stage);
-    f64x4 prev_sig_b = _mm256_load_pd(info->stage + 4);
-    f64x4 prev_cos = _mm256_load_pd(info->prev_cos);
-    f64x4 next_cos = _mm256_load_pd(info->next_cos);
+    // f64x4 prev_cos = _mm256_load_pd(info->prev_cos); // -0.5 0.5 1.5 2.5
+    // f64x4 next_cos = _mm256_load_pd(info->next_cos); // 3.5 4.5 5.5 6.5
     f64x4 angle = _mm256_load_pd(info->angle);
     f64x4 full_delta_angle = _mm256_set1_pd(info->delta_angle*4);
-    f64x4 half_angle = _mm256_set1_pd(info->delta_angle * 0.5);
-    #if ZEN_PLUS
-    f64x2 filter_info = _mm_load_pd(info->filter_info);
-    f64x2 filter_coeff = _mm_set1_pd(1 - info->filter_coeff);
-    #else
-    f64x4 filter_info = _mm256_load_pd(info->filter_info);
-    f64x4 filter_coeff = _mm256_set1_pd(1 - info->filter_coeff);
-    #endif
-    for (usize i = 0, j = 0; i < buf_len; i+=4) {
-      // 2倍サンプリング + 中間周波数へ落とす 
-      f64x4 sig = _mm256_load_pd(input_signal+i);
-      f64x4 prev_cos_t0 = _mm256_blend_pd(prev_cos, next_cos, 0b0111);
-      f64x4 prev_cos_t1 = _mm256_ror_pd(prev_cos_t0);
-      f64x4 prev_1 = _mm256_blend_pd(prev, sig, 0b0111);
-      f64x4 prev_2 = _mm256_ror_pd(prev_1);
-      f64x4 cos_a = _mm256_add_pd(prev_cos_t1,next_cos);
-      f64x4 sig_a = _mm256_mul_pd(prev_2, cos_a);
-      f64x4 sig_b = _mm256_mul_pd((_mm256_add_pd(prev_2, sig)),next_cos);
-      prev = sig;
-      prev_cos = next_cos;
-      // 高周波成分の除去
-      f64x4 s1x4 = _mm256_mul_pd(prev_sig_a, coeff);
-      f64x4 s2x4 = _mm256_mul_pd(prev_sig_b, coeff);
-      prev_sig_a = sig_a;
-      prev_sig_b = sig_b;
-
-      #if ZEN_PLUS
-      // START LPF
-      f64x2 s1_l = _mm256_extractf128_pd(prev_sig_a,0);
-      f64x2 s2_l = _mm256_extractf128_pd(prev_sig_b,0);
-      f64x2 s1_h = _mm256_extractf128_pd(prev_sig_a,1);
-      f64x2 s2_h = _mm256_extractf128_pd(prev_sig_b,1);
-      f64x2 filter_info_1 = _mm_fmadd_pd(filter_coeff,filter_info,s1_l);
-      f64x2 filter_info_2 = _mm_fmadd_pd(filter_coeff,filter_info_1,s2_l);
-      f64x2 filter_info_a = _mm_permute_pd(filter_info_2,0b01);
-      f64x2 filter_info_3 = _mm_fmadd_pd(filter_coeff,filter_info_a,s1_l);
-      f64x2 filter_info_4 = _mm_fmadd_pd(filter_coeff,filter_info_3,s2_l);
-      f64x2 filter_info_b = _mm_permute_pd(filter_info_4,0b01);
-      f64x2 filter_info_5 = _mm_fmadd_pd(filter_coeff,filter_info_b,s1_h);
-      f64x2 filter_info_6 = _mm_fmadd_pd(filter_coeff,filter_info_5,s2_h);
-      f64x2 filter_info_c = _mm_permute_pd(filter_info_6,0b01);
-      f64x2 filter_info_7 = _mm_fmadd_pd(filter_coeff,filter_info_c,s1_h);
-      f64x2 filter_info_8 = _mm_fmadd_pd(filter_coeff,filter_info_7,s2_h);
-      filter_info = _mm_permute_pd(filter_info_8,0b01);
-      #else
-      for (int j = 0; j < 4; j++) {
-        f64x4 filter_info_a = _mm256_fmadd_pd(filter_coeff,filter_info,s1x4);
-        f64x4 filter_info_b = _mm256_fmadd_pd(filter_coeff,filter_info_a,s2x4);
-        filter_info = _mm256_ror_pd(filter_info_b);
-      }
-      #endif
-      // END LPF
-      next_cos = _mm256_cos_pd(_mm256_add_pd(angle,half_angle));
+   for(usize i = 0, j = 0; i < buf_len; i+=8) {
+      f64x4 cos_value1 = _mm256_cos_pd(angle);
       angle = _mm256_add_pd(angle,full_delta_angle);
-      // ダウンサンプリング
-      #if ZEN_PLUS
-      output_signal[i >> 2] = _mm_cvtsd_f64(filter_info);
-      #else
-      output_signal[i >> 2] = _mm256_cvtsd_f64(filter_info);
-      #endif
-      
+      f64x4 cos_value2 = _mm256_cos_pd(angle);
+      angle = _mm256_add_pd(angle,full_delta_angle);
+      f64x4 signal1 = _mm256_load_pd(input_signal + i);     // 0 1 2 3
+      f64x4 signal2 = _mm256_load_pd(input_signal + i +4);     // 0 1 2 3
+      f64x4 sig1 = _mm256_mul_pd(signal1,cos_value1);
+      f64x4 sig2 = _mm256_mul_pd(signal2,cos_value2);
+      _mm256_store_pd(output_signal + i,sig1);
+      _mm256_store_pd(output_signal + i+4,sig2);
+
     }
-    _mm256_store_pd(info->prev_sig, prev);
-    _mm256_store_pd(info->angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
-    _mm256_store_pd(info->next_cos,next_cos);
-    _mm256_store_pd(info->prev_cos,prev_cos);
-    
-    _mm256_store_pd(info->stage,prev_sig_a);
-    _mm256_store_pd(info->stage + 4,prev_sig_b);
-    #if ZEN_PLUS
-    _mm_store_pd(info->filter_info,filter_info);
-    #else
-    _mm256_store_pd(info->filter_info,filter_info);
-    #endif
+    // _mm256_store_pd(info->next_cos,next_cos);
+    _mm256_store_pd(info->angle, _mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
   #endif
 }
 void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const fc,DemodulationInfo* const info, const usize buf_len) {
@@ -556,7 +478,8 @@ void filtering(f64* dst, f64* input, FilteringInfo* info,usize buf_len) {
     prev_prev_out = y2;
     prev_sig = s3;
     prev_prev_sig = s2;
-    dst[i>>2] = 4*_mm_cvtsd_f64(y3);
+    dst[i>>2] = 2*_mm_cvtsd_f64(y3);
+    // dst[i>>2] = _mm_cvtsd_f64(sig_lo);
   }
   _mm_store_pd(info->prev_sig, prev_sig);
   _mm_store_pd(info->prev_prev_sig, prev_prev_sig);

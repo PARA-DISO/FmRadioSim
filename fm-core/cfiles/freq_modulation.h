@@ -1,7 +1,7 @@
 #pragma once
 #include <immintrin.h>
 #include "rstype.h"
-#define ENABLE_TEST_CODE 1
+#define ENABLE_UPSAMPLING 0
 #define ZEN_PLUS 1
 #define DISABLE_SIMD_DEMODULATE 0
 typedef uint64_t usize;
