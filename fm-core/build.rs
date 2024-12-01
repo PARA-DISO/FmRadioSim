@@ -8,6 +8,10 @@ fn main() {
         .file(fpath1)
         .flag("/arch:AVX2")
         .flag("/fp:fast")
+        .flag("/favor:AMD64")
+        .flag("/GA")
+        .flag("/QIntel-jcc-erratum")
+        .flag("/Qsafe_fp_loads")
         // .flag("/fp:precise")
         .include("cfiles")
         .compile("freq_modulation");

@@ -12,6 +12,18 @@ use spectrum_analyzer::scaling::scale_to_zero_to_one;
 use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 use fm_core::FmRadioSim;
+// PARAMETERS
+const BUFFER_SIZE: usize = 730;
+const AUDIO_SAMPLE_RATE: usize = 44_100;
+
+const SIGNAL_FREQ: f64 = 440f64;
+// const CARRIER_FREQ: f64 = 84_700_000f64;
+const CARRIER_FREQ: f64 = 79_500_000f64;
+const A: f64 = 0.5;
+const RENDER_MAX: usize = 100;
+// is modulate audio sig
+const DISABLE_AUDIO_INPUT: bool = false;
+const FRAME_TIME:f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
 fn main() {
     State::run(Settings {
         antialiasing: true,
@@ -81,20 +93,11 @@ impl Application for State {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // window::frames().map(|_| Message::Tick)
-        time::every(time::Duration::from_millis(500)).map(|_| Message::Tick)
+        time::every(time::Duration::from_millis(FRAME_TIME.ceil() as u64)).map(|_| Message::Tick)
     }
 }
 // use std::collections::VecDeque;
-const BUFFER_SIZE: usize = 256;
-const AUDIO_SAMPLE_RATE: usize = 44_100;
 
-const SIGNAL_FREQ: f64 = 440f64;
-// const CARRIER_FREQ: f64 = 84_700_000f64;
-const CARRIER_FREQ: f64 = 79_500_000f64;
-const A: f64 = 0.5;
-const RENDER_MAX: usize = 10;
-// is modulate audio sig
-const DISABLE_AUDIO_INPUT: bool = false;
 
 struct MyChart {
     t: f64,
@@ -161,7 +164,7 @@ impl MyChart {
                     * A as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
-            println!("start processing");
+            // println!("start processing");
             // up-sample
             let timer = Instant::now();
             self.fm_radio_sim.process(
@@ -171,7 +174,7 @@ impl MyChart {
                 &mut self.output_signal_r,
             );
             let end_time = timer.elapsed();
-            println!("================================");
+            // println!("================================");
             println!("Elapsed Time: {:?}", end_time);
             // println!("  - Up-Sample: {:?}", lap0);
             // println!("  - Composite: {:?}", lap1 - lap0);
@@ -224,24 +227,24 @@ impl Chart<Message> for MyChart {
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
-                0 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.input_signal[0]
-                        .iter()
-                        .map(|x| *x as f64)
-                        .collect::<Vec<_>>(),
-                    AUDIO_SAMPLE_RATE,
-                ),
-                1 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self.input_signal[1]
-                        .iter()
-                        .map(|x| *x as f64)
-                        .collect::<Vec<_>>(),
-                    AUDIO_SAMPLE_RATE,
-                ),
+                // 0 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.input_signal[0]
+                //         .iter()
+                //         .map(|x| *x as f64)
+                //         .collect::<Vec<_>>(),
+                //     AUDIO_SAMPLE_RATE,
+                // ),
+                // 1 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self.input_signal[1]
+                //         .iter()
+                //         .map(|x| *x as f64)
+                //         .collect::<Vec<_>>(),
+                //     AUDIO_SAMPLE_RATE,
+                // ),
 
                 // 3 => draw_chart(
                 //     builder,
@@ -261,16 +264,16 @@ impl Chart<Message> for MyChart {
                 //     &self.demodulated_signal,
                 //     FM_MODULATION_SAMPLE_RATE / RATIO_FS_INTER_FS,
                 // ),
-                6 => draw_chart(
-                    builder,
-                    labels[i],
-                    &self
-                        .output_signal_l
-                        .iter()
-                        .map(|x| *x as f64)
-                        .collect::<Vec<_>>(),
-                    AUDIO_SAMPLE_RATE,
-                ),
+                // 6 => draw_chart(
+                //     builder,
+                //     labels[i],
+                //     &self
+                //         .output_signal_l
+                //         .iter()
+                //         .map(|x| *x as f64)
+                //         .collect::<Vec<_>>(),
+                //     AUDIO_SAMPLE_RATE,
+                // ),
                 7 => draw_chart(
                     builder,
                     labels[i],
