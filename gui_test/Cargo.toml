@@ -2,7 +2,9 @@
 name = "gui_test"
 version = "0.1.0"
 edition = "2021"
-
+[profile.release]
+lto = "fat"
+codegen-units = 1
 [dependencies]
 iced = { version = "0.12.1", features = ["canvas","tokio"] }
 plotters = {version = "0.3.7",default_features = false, features = [

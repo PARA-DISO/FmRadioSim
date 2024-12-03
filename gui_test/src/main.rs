@@ -13,7 +13,8 @@ use spectrum_analyzer::{samples_fft_to_spectrum, FrequencyLimit};
 const TITLE_FONT_SIZE: u16 = 22;
 use fm_core::FmRadioSim;
 // PARAMETERS
-const BUFFER_SIZE: usize = 730;
+// const BUFFER_SIZE: usize = 730;
+const BUFFER_SIZE: usize = 256;
 const AUDIO_SAMPLE_RATE: usize = 44_100;
 
 const SIGNAL_FREQ: f64 = 440f64;
@@ -123,7 +124,7 @@ impl MyChart {
         );
         let mut fm_radio_sim =
             FmRadioSim::from(AUDIO_SAMPLE_RATE, BUFFER_SIZE, CARRIER_FREQ);
-        fm_radio_sim.init_thread();
+        // fm_radio_sim.init_thread();
         Self {
             render_times: 0,
             t: 0.0,
@@ -171,7 +172,7 @@ impl MyChart {
             // println!("start processing");
             // up-sample
             let timer = Instant::now();
-            self.fm_radio_sim.process(
+            self.fm_radio_sim.process_serial(
                 &self.input_signal[0],
                 &self.input_signal[1],
                 &mut self.output_signal_l,
