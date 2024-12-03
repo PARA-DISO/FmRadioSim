@@ -24,7 +24,7 @@ const A: f64 = 0.5;
 const RENDER_MAX: usize = 100;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
-const FIXED_RENDERING_DURATION: u64 = 100;  // 1ms1
+const FIXED_RENDERING_DURATION: u64 = 30;  // 1ms1
 const ENABLE_FIXED_TIME_RENDER:bool = true;
 const FRAME_TIME:f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
 

@@ -16,7 +16,7 @@ struct Gain {
 /// the plugin's parameters, persistent serializable fields, and nested parameter groups. You can
 /// also easily implement [`Params`] by hand if you want to, for instance, have multiple instances
 /// of a parameters struct for multiple identical oscillators/filters/envelopes.
-#[derive(Params,Clone)]
+#[derive(Params, Clone)]
 struct GainParams {
     // The parameter's ID is used to identify the parameter in the wrapped plugin API. As long as
     // these IDs remain constant, you can rename and reorder these fields as you wish. The
@@ -62,14 +62,14 @@ impl Default for Gain {
             params: Arc::new(GainParams::default()),
             sample_rate: 44100.,
             buffer_size: 700,
-            buf_l: vec![0.;700],
-            buf_r: vec![0.;700],
-            fmradio: FmRadioSim::from(44100, 700, 79_500_000f64)
+            buf_l: vec![0.; 700],
+            buf_r: vec![0.; 700],
+            fmradio: FmRadioSim::from(44100, 700, 79_500_000f64),
         }
     }
 }
 // impl Gain {}
-unsafe impl Send for Gain{}
+unsafe impl Send for Gain {}
 impl Default for GainParams {
     fn default() -> Self {
         Self {
@@ -186,39 +186,55 @@ impl Plugin for Gain {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-      let buffer_size = buffer.samples();
+        let buffer_size = buffer.samples();
         if buffer_size != self.buffer_size {
             self.buffer_size = buffer_size;
-            self.fmradio = FmRadioSim::from(self.sample_rate as usize, buffer_size, 79_500_000f64);
+            self.fmradio = FmRadioSim::from(
+                self.sample_rate as usize,
+                buffer_size,
+                79_500_000f64,
+            );
             self.fmradio.init_thread();
-            self.buf_l = vec![0.;buffer_size];
-            self.buf_r = vec![0.;buffer_size];
+            self.buf_l = vec![0.; buffer_size];
+            self.buf_r = vec![0.; buffer_size];
         }
         let samples = buffer.as_slice();
-        self.fmradio.process(samples[0], samples[1], &mut self.buf_l, &mut self.buf_r);
-        buffer.iter_samples().zip([&self.buf_l,&self.buf_r]).for_each(|(mut dst,buf)| {
-          dst.iter_mut().zip(buf).for_each(|(dst,src)| {*dst = *src });
-        });
-        
+        self.fmradio.process(
+            samples[0],
+            samples[1],
+            &mut self.buf_l,
+            &mut self.buf_r,
+        );
+        buffer
+            .iter_samples()
+            .zip([&self.buf_l, &self.buf_r])
+            .for_each(|(mut dst, buf)| {
+                dst.iter_mut().zip(buf).for_each(|(dst, src)| *dst = *src);
+            });
+
         ProcessStatus::Normal
     }
     fn initialize(
-      &mut self,
-      _audio_io_layout: &AudioIOLayout,
-      buffer_config: &BufferConfig,
-      _context: &mut impl InitContext<Self>,
-  ) -> bool {
-      // simple_logging::log_to_file("./fmradio.log", log::LevelFilter::Debug);
-      
-      if self.sample_rate != buffer_config.sample_rate {
-          self.fmradio = FmRadioSim::from(buffer_config.sample_rate as usize, 700, 79_500_000f64);
-          self.fmradio.init_thread();
-          self.sample_rate = buffer_config.sample_rate;
-      }
-      // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
-      log::info!("Initialized: fs: {}",buffer_config.sample_rate);
-      true
-  }
+        &mut self,
+        _audio_io_layout: &AudioIOLayout,
+        buffer_config: &BufferConfig,
+        _context: &mut impl InitContext<Self>,
+    ) -> bool {
+        // simple_logging::log_to_file("./fmradio.log", log::LevelFilter::Debug);
+
+        if self.sample_rate != buffer_config.sample_rate {
+            self.fmradio = FmRadioSim::from(
+                buffer_config.sample_rate as usize,
+                700,
+                79_500_000f64,
+            );
+            self.fmradio.init_thread();
+            self.sample_rate = buffer_config.sample_rate;
+        }
+        // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
+        log::info!("Initialized: fs: {}", buffer_config.sample_rate);
+        true
+    }
     // This can be used for cleaning up special resources like socket connections whenever the
     // plugin is deactivated. Most plugins won't need to do anything here.
     fn deactivate(&mut self) {}
@@ -226,7 +242,8 @@ impl Plugin for Gain {
 
 impl ClapPlugin for Gain {
     const CLAP_ID: &'static str = "com.moist-plugins-gmbh.gain";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("A smoothed gain parameter example plugin");
+    const CLAP_DESCRIPTION: Option<&'static str> =
+        Some("A smoothed gain parameter example plugin");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[

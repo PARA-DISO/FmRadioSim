@@ -44,13 +44,14 @@ inline void differential(f64* dr, f64* di,const f64 r, const f64 i, f64* prev, c
   prev[1]  = i;
 }
 
-void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_sig, f64* const sum, const f64 sample_period, f64* const _angle, f64 modulate_index,const f64 fc, const usize buf_len) {
-  f64x4 angle = _mm256_load_pd(_angle);
-  f64x4 phi = _mm256_set1_pd(TAU*fc*sample_period*4.);
-  f64x4 coeff = _mm256_set1_pd(modulate_index * sample_period/2.);
+void fm_modulate(f64 output_signal[], const f64 input_signal[], const usize buf_len, ModulationInfo* info) {
+#if TEST_CODE
+  f64x4 angle = _mm256_load_pd(info->t);
+  f64x4 phi = _mm256_set1_pd(TAU * info->carrier_freq * info->sample_period*4.);
+  f64x4 coeff = _mm256_set1_pd(info->modulation_index * info->sample_period/2.);
 
-  f64 prev = *prev_sig;
-  f64 current_sum = *sum;
+  f64 prev = info->prev_sig;
+  f64 current_sum = info->integral;
   for (usize i = 0; i < buf_len; i+=4) {
     // 積分
     f64x4 in = _mm256_load_pd(input_signal+i);
@@ -70,9 +71,15 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],f64* const prev_s
     _mm256_store_pd(output_signal + i, sigs);
     angle = _mm256_add_pd(angle, phi);
   }
-  _mm256_store_pd(_angle,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
-  *sum = current_sum;
-  *prev_sig = prev;
+  _mm256_store_pd(info->t,_mm256_fmod_pd(angle,_mm256_set1_pd(TAU)));
+  info->integral = current_sum;
+  info->prev_sig = prev;
+#else
+f64x4 angle = _mm256_load_pd(info->t);
+f64x4 phi = _mm256_set1_pd(TAU * info->carrier_freq * info->sample_period*4.);
+f64x4 coeff = _mm256_set1_pd(info->modulation_index * info->sample_period/2.);
+
+#endif
 }
 #define FIRST_POS 1
 void convert_intermediate_freq(

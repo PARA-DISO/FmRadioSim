@@ -26,7 +26,7 @@ impl CnvFiInfos {
             )),
             // filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
             // angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
-            angle: [0.,delta_angle,2.* delta_angle,3.* delta_angle],
+            angle: [0., delta_angle, 2. * delta_angle, 3. * delta_angle],
             delta_angle,
             ..Default::default()
         }
@@ -91,7 +91,7 @@ impl CvtIntermediateFreq {
         }
     }
 }
-
+#[repr(C)]
 pub struct Modulator {
     integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
@@ -150,13 +150,8 @@ impl Modulator {
             crate::fm_modulate(
                 buffer.as_mut_ptr(),
                 signal.as_ptr(),
-                &raw mut self.prev_sig,
-                &raw mut self.integral,
-                self.sample_period,
-                self.t.as_mut_ptr(),
-                self.modulation_index,
-                self.carrier_freq,
                 buffer.len() as u64,
+                self as *mut Self
             )
         };
     }
