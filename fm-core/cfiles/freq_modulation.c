@@ -77,7 +77,41 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[], const usize buf_
 #else
 f64x4 angle = _mm256_load_pd(info->t);
 f64x4 phi = _mm256_set1_pd(TAU * info->carrier_freq * info->sample_period*4.);
-f64x4 coeff = _mm256_set1_pd(info->modulation_index * info->sample_period/2.);
+f64x4 coeff = _mm256_set1_pd(info->modulation_index * info->sample_period);
+for (usize i = 0; i < buf_len; i+=8) {
+  // integral
+  f64x4 s1 = _mm256_load_pd(input_signal + i);  // 0 1 2 3
+  f64x4 s2 = _mm256_load_pd(input_signal +i +4);// 4 5 6 7
+  f64x4 slo = _mm256_shuffle_pd(s1,s2,0b0000); // 0 4 2 6
+  f64x4 shi = _mm256_shuffle_pd(s1,s2,0b1111); // 1 5 3 7
+  f64x4 tmp_sig1 = _mm256_add_pd(slo,shi); // 0+1 4+5 2+3 6+7
+  f64x4 s1_tmp = _mm256_shuffle_pd(tmp_sig,s1,0b0000) // 0+1 0 2+3 2
+  f64x4 s2_tmp = _mm256_shuffle_pd(tmp_sig,s2,0b0101) // 4 4+5 6 6+7
+  f64x2 s1_lo = _mm256_extractf128_pd(s1_tmp,0); // 0+1 0
+  f64x2 s1_hi = _mm256_extractf128_pd(s1_tmp,1); // 2+3 2
+  f64x2 s2_lo = _mm256_extractf128_pd(s2_tmp,0); // 4+5 4
+  f64x2 s2_hi = _mm256_extractf128_pd(s2_tmp,1); // 6+7 6
+  /*res*/f64x2 s1_sums = _mm_add(s1_lo,prev_sum); // s+0+1 s+0
+  f64x2 s1_sum =  _mm_broadcastsd_pd(s1_lo); // 0+1
+  f64x2 s2_sum = _mm_broadcastsd_pd(s2_lo); // 4+5
+  /*res*/f64x2 s1_hi_sums = _mm_add_pd(s1_hi,s1_sum); // s+0+1+2+3 s+0+2
+  f64x2 s2_hi_sums_tmp = _mm_add_pd(s2_hi,s2_sum); // 6+7+5+4 6+5+4
+  f64x2 s1_sum = _mm_broadcastsd_pd(s1_hi_sums);
+  /*res*/f64x2 s2_lo_sums = _mm_add_pd(s2_lo,s1_sum); // s+0+1+2+3+4+5 s+0+1+2+3+4
+  /*res*/f64x2 s2_hi_sums = _mm_add_pd(s2_hi_sums_tmp,s1_sum); // 4+5+6+7 6+5+4
+  prev_sum = _mm_broadcastsd_pd(s2_hi_sums);
+  //modulation
+  // integrals1: 0 1 2 3
+  // coeff: m * (1/fs)
+  f64x4 modulated_angle1 = _mm256_fmadd_pd(coeff,integrals1,angle);
+  f64x4 cos_value1 = _mm256_cos_pd(modulated_angle1);
+  f64x4 angle2 = _mm256_add_pd(angle, phi);
+  f64x4 modulated_angle2 = _mm256_fmadd_pd(coeff,integrals1,angle);
+  f64x4 cos_value1 = _mm256_cos_pd(modulated_angle1);
+  angle = _mm256_add_pd(angle2, phi);
+  _mm256_store_pd(output_signal+i,cos_value);
+  _mm256_store_pd(output_signal+i+4,cos_value);
+}
 
 #endif
 }
