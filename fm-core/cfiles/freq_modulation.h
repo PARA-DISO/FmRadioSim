@@ -46,7 +46,7 @@ typedef struct {
 typedef struct {
   f64 integral[2];
   f64 t[4];
-  f64 prev_sig;
+  f64 prev_sig[8];
   f64 sample_period;
   f64 carrier_freq;
   f64 modulation_index;

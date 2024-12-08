@@ -97,7 +97,7 @@ pub struct Modulator {
     integral: [f64; 2], // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
     t: [f64; 4], // 時刻t
-    prev_sig: f64,
+    prev_sig: [f64;8],
     sample_period: f64,
     carrier_freq: f64,
     modulation_index: f64,

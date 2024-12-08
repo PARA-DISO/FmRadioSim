@@ -56,7 +56,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   f64x4 coeff =
       _mm256_set1_pd(info->modulation_index * info->sample_period / 2.);
 
-  f64 prev = info->prev_sig;
+  f64 prev = info->prev_sig[0];
   f64 current_sum = info->integral[0];
   for (usize i = 0; i < buf_len; i += 4) {
     // 積分
@@ -80,7 +80,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   }
   _mm256_store_pd(info->t, _mm256_fmod_pd(angle, _mm256_set1_pd(TAU)));
   info->integral[0] = current_sum;
-  info->prev_sig = prev;
+  info->prev_sig[0] = prev;
 #else
   f64x4 angle = _mm256_load_pd(info->t);
   f64x4 phi =
@@ -88,14 +88,16 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   f64x4 coeff = _mm256_set1_pd(info->modulation_index * info->sample_period);
   
   f64x2 prev_sum = _mm_load_pd(info->integral);
+  f64x4 s1_sums_prev = _mm256_load_pd(info->prev_sig);
+  f64x4 s2_sums_prev = _mm256_load_pd(info->prev_sig+4);
   //
-  FILE* test_log = fopen("test_log.txt", "w");
+  // FILE* test_log = fopen("test_log.txt", "w");
   #ifdef INTERPOLATION
   f64x4 c1 = _mm256_set_pd(1, 0.75, 0.5, 0.25);
   f64x4 c2 = _mm256_set_pd(0, 0.25, 0.5, 0.75);
   f64x4 prev_inter_sig = _mm256_load_pd(info->prev_inter_sig);
   #endif
-  _mm256_print_pd(coeff);
+  // _mm256_print_pd(coeff);
   for (usize i = 0; i < buf_len; i += 8) {
     // integral
      f64x4 s1 = _mm256_load_pd(input_signal + i);            // 0 1 2 3
@@ -124,6 +126,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   
   f64x2 s2_hi_hi = _mm_broadcastsd_pd(s2_hi_sums);
   prev_sum = s2_hi_hi;
+  
 #ifdef INTERPOLATION
     // interpolation x4
     f64x2 s1_lo_lo = _mm_permute_pd(s1_lo_sums, 0b11);
@@ -159,17 +162,17 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
       _mm256_store_pd(pos + xx, cos_value);
     }
 #else
-    // modulation
     f64x2 s1_lo_sorted = _mm_permute_pd(s1_lo_sums, 0b01);
     f64x2 s1_hi_sorted = _mm_permute_pd(s1_hi_sums, 0b01);
     f64x2 s2_lo_sorted = _mm_permute_pd(s2_lo_sums, 0b01);
     f64x2 s2_hi_sorted = _mm_permute_pd(s2_hi_sums, 0b01);
     f64x4 s1_sums = _mm256_set_m128d(s1_hi_sorted, s1_lo_sorted);
     f64x4 s2_sums = _mm256_set_m128d(s2_hi_sorted, s2_lo_sorted);
+    // modulation
     f64x4 angle2 = _mm256_add_pd(angle, phi);
     f64x4 angle_tmp = _mm256_add_pd(angle2, phi);
-    f64x4 modulated_angle1 = _mm256_fmadd_pd(coeff, s1_sums, angle);
-    f64x4 modulated_angle2 = _mm256_fmadd_pd(coeff, s2_sums, angle2);
+    f64x4 modulated_angle1 = _mm256_fmadd_pd(coeff, s1_sums_prev, angle);
+    f64x4 modulated_angle2 = _mm256_fmadd_pd(coeff, s2_sums_prev, angle2);
     
     f64x4 cos_value1 = _mm256_cos_pd(modulated_angle1);
     f64x4 cos_value2 = _mm256_cos_pd(modulated_angle2);
@@ -179,12 +182,16 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
     // _mm256_fprint_pd(test_log,s2_sums);
     _mm256_store_pd(output_signal + i, cos_value1);
     _mm256_store_pd(output_signal + i + 4, cos_value2);
+    // <for next loop data>
     angle = angle_tmp;
+    s1_sums_prev = s1_sums;
+    s2_sums_prev = s2_sums;
 #endif
   }
-  fclose(test_log);
+  // fclose(test_log);
   _mm256_store_pd(info->t, _mm256_fmod_pd(angle, _mm256_set1_pd(TAU)));
-  
+  _mm256_store_pd(info->prev_sig,s1_sums_prev);
+  _mm256_store_pd(info->prev_sig +4,s2_sums_prev);
   _mm_store_pd(info->integral, prev_sum);
   #if INTERPOLATION
   _mm256_store_pd(info->prev_inter_sig, prev_inter_sig);
@@ -415,7 +422,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
         _mm256_mul_pd(_mm256_sub_pd(sin_val, prev_sin), differential_coeff);
     f64x4 sig = _mm256_load_pd(input_signal + i);
     f64x4 sig1 = _mm256_mul_pd(_mm256_set1_pd(-1), _mm256_mul_pd(sig, sin_val));
-    f64x4 sig2 = _mm256_mul_pd(_mm256_set1_pd(1), _mm256_mul_pd(sig, cos_val));
+    f64x4 sig2 = _mm256_mul_pd(sig, cos_val);
     angle = _mm256_add_pd(angle, delta_angle);
     angle = _mm256_fmod_pd(angle, _mm256_set1_pd(TAU));
     f64x4 prev_sin_tmp = prev_sin;
@@ -511,7 +518,7 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   f64 prev = info->prev;
   usize multiplier = info->multiplier;
   f64x4 offset = _mm256_set1_pd(4);
-  f64x4 m = _mm256_set1_pd(multiplier);
+  f64x4 m = _mm256_set1_pd(1./multiplier);
   // printf("len: %ld / multiplier: %ld\n", len,multiplier);
   for (int i = 0; i < len; ++i) {
     f64x4 a = _mm256_set1_pd(prev);
@@ -521,7 +528,7 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
     prev = input[i];
     // upsample
     for (usize j = 0; j < multiplier; j += 4) {
-      f64x4 coeff1 = _mm256_div_pd(n, m);
+      f64x4 coeff1 = _mm256_mul_pd(n, m);
       f64x4 coeff2 = _mm256_sub_pd(_mm256_set1_pd(1), coeff1);
       f64x4 t = _mm256_fmadd_pd(a, coeff1, _mm256_mul_pd(b, coeff1));
       n = _mm256_add_pd(n, offset);
