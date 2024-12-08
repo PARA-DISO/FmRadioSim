@@ -21,7 +21,7 @@ extern "C" {
         output_signal: *mut f64,
         input_signal: *const f64,
         buf_len: u64,
-        info: *mut modulator::Modulator
+        info: *mut modulator::Modulator,
     );
     fn convert_intermediate_freq(
         output_signal: *mut f64,
@@ -220,6 +220,15 @@ impl FmRadioSim {
             unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
         }
     }
+    pub fn get_modulate(&self) -> &[f64] {
+      if self.read_state {
+          let array = (self.modulate_signal[0]).lock().unwrap();
+          unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
+      } else {
+          let array = (self.modulate_signal[1]).lock().unwrap();
+          unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
+      }
+  }
     pub fn init_thread(&mut self) {
         // let modulate_counter = Arc::new(Mutex::new(0));
         // Buffer
@@ -438,7 +447,8 @@ impl FmRadioSim {
         // up sample
         let _ = self.upsampler[0].process::<f64, f64>(
             Some(&self.tmp_buffer[0]),
-            &mut self.audio_in_buffer[0],
+            // &mut self.audio_in_buffer[0],
+            &mut self.composite_signal
         );
         let _ = self.upsampler[1].process::<f64, f64>(
             Some(&self.tmp_buffer[1]),
@@ -446,11 +456,11 @@ impl FmRadioSim {
         );
         let lap0 = timer_start.elapsed();
         // composite
-        self.composite.process(
-            &self.audio_in_buffer[0],
-            &self.audio_in_buffer[1],
-            &mut self.composite_signal,
-        );
+        // self.composite.process(
+        //     &self.audio_in_buffer[0],
+        //     &self.audio_in_buffer[1],
+        //     &mut self.composite_signal,
+        // );
         let lap1 = timer_start.elapsed();
         unsafe {
             upsample(

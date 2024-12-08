@@ -20,13 +20,14 @@ const AUDIO_SAMPLE_RATE: usize = 44_100;
 const SIGNAL_FREQ: f64 = 440f64;
 // const CARRIER_FREQ: f64 = 84_700_000f64;
 const CARRIER_FREQ: f64 = 79_500_000f64;
+// const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 100;
+const RENDER_MAX: usize = 10;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
-const FIXED_RENDERING_DURATION: u64 = 30;  // 1ms1
-const ENABLE_FIXED_TIME_RENDER:bool = true;
-const FRAME_TIME:f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
+const FIXED_RENDERING_DURATION: u64 = 30; // 1ms1
+const ENABLE_FIXED_TIME_RENDER: bool = true;
+const FRAME_TIME: f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
 
 fn main() {
     State::run(Settings {
@@ -97,12 +98,15 @@ impl Application for State {
 
     fn subscription(&self) -> Subscription<Self::Message> {
         // window::frames().map(|_| Message::Tick)
-        time::every(time::Duration::from_millis(
-          if ENABLE_FIXED_TIME_RENDER {FIXED_RENDERING_DURATION} else {FRAME_TIME.ceil() as u64})).map(|_| Message::Tick)
+        time::every(time::Duration::from_millis(if ENABLE_FIXED_TIME_RENDER {
+            FIXED_RENDERING_DURATION
+        } else {
+            FRAME_TIME.ceil() as u64
+        }))
+        .map(|_| Message::Tick)
     }
 }
 // use std::collections::VecDeque;
-
 
 struct MyChart {
     t: f64,
@@ -251,17 +255,18 @@ impl Chart<Message> for MyChart {
                     AUDIO_SAMPLE_RATE,
                 ),
 
-                // 3 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     &self.modulated_signal,
-                //     FM_MODULATION_SAMPLE_RATE,
-                // ),
+                3 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_modulate(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE,
+                ),
                 4 => draw_chart(
                     builder,
                     labels[i],
                     self.fm_radio_sim.get_intermediate(),
-                    FmRadioSim::FM_MODULATION_SAMPLE_RATE/ FmRadioSim::RATIO_FS_INTER_FS,
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
                 ),
                 // 5 => draw_chart(
                 //     builder,

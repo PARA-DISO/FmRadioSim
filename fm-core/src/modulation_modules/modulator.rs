@@ -92,14 +92,16 @@ impl CvtIntermediateFreq {
     }
 }
 #[repr(C)]
+#[derive(Default)]
 pub struct Modulator {
-    integral: f64, // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
+    integral: [f64; 2], // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
     t: [f64; 4], // 時刻t
     prev_sig: f64,
     sample_period: f64,
     carrier_freq: f64,
     modulation_index: f64,
+    prev_inter_sig: [f64; 4],
 }
 impl Modulator {
     // pub fn new() -> Self {
@@ -117,7 +119,7 @@ impl Modulator {
     pub fn from(f: f64, sample_rate: f64) -> Self {
         let sample_period = 1. / sample_rate;
         Self {
-            integral: 0.0,
+            // integral: 0.0,
             // t: 0.0,
             t: [
                 0.0,
@@ -125,12 +127,13 @@ impl Modulator {
                 TAU * f * sample_period * 2.,
                 TAU * f * sample_period * 3.,
             ],
-            prev_sig: 0.0,
+            // prev_sig: 0.0,
             // modulation_index: 47./53.,
             modulation_index: 47. / 53.,
             // sample_rate,
             sample_period,
             carrier_freq: f,
+            ..Default::default()
         }
     }
     pub fn process(&mut self, signal: &[f64], buffer: &mut [f64]) {
@@ -151,7 +154,7 @@ impl Modulator {
                 buffer.as_mut_ptr(),
                 signal.as_ptr(),
                 buffer.len() as u64,
-                self as *mut Self
+                self as *mut Self,
             )
         };
     }

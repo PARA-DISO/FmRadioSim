@@ -2,7 +2,7 @@
 #include <immintrin.h>
 #include "rstype.h"
 #define ENABLE_UPSAMPLING 0
-#define TEST_CODE 1
+#define TEST_CODE false
 #define DISABLE_SIMD_DEMODULATE 0
 typedef uint64_t usize;
 typedef double f64;
@@ -44,12 +44,13 @@ typedef struct {
 //   FilterInfo filter_info[6];
 // } DemodulationInfo;
 typedef struct {
-  f64 integral;
+  f64 integral[2];
   f64 t[4];
   f64 prev_sig;
   f64 sample_period;
   f64 carrier_freq;
   f64 modulation_index;
+  f64 prev_inter_sig[4];
 } ModulationInfo;
 typedef struct {
   f64 angle[4];

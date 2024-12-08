@@ -12,3 +12,7 @@
   - latency 1 / CPI 1
 - __m128d _mm_mul_pd
   - latency 4 / CPI 0.5
+- __m256d _mm256_set_m128d(__m128d hi, __m128d lo)
+  - latency 3 / CPI 1
+- _mm256_broadcastsd_pd(__m128d a)
+  - latency 3 / CPI 1
