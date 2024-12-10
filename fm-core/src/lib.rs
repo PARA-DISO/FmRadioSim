@@ -83,6 +83,7 @@ pub struct FmRadioSim {
     // Thread Pool (For management)
     read_state: bool,
     barrier: Arc<Barrier>,
+    is_init: bool,
 }
 impl FmRadioSim {
     // define constants
@@ -192,7 +193,7 @@ impl FmRadioSim {
                 vec![0.; composite_buffer_size],
                 vec![0.; composite_buffer_size],
             ],
-            composite_signal: vec![0.; modulated_buffer_size],
+            composite_signal: vec![0.; composite_buffer_size],
             up_sampled_signal: generate_pipline_buffer(modulated_buffer_size),
             modulate_signal: generate_pipline_buffer(modulated_buffer_size),
             intermediate_signal: generate_pipline_buffer(modulated_buffer_size),
@@ -208,7 +209,9 @@ impl FmRadioSim {
             restored_signal_r: vec![0.; composite_buffer_size],
             //
             read_state: true,
-            barrier: Arc::new(Barrier::new(4)),
+            // barrier: Arc::new(Barrier::new(4)),
+            barrier: Arc::new(Barrier::new(3)),
+            is_init: false,
         }
     }
     pub fn get_intermediate(&self) -> &[f64] {
@@ -228,17 +231,27 @@ impl FmRadioSim {
           let array = (self.modulate_signal[1]).lock().unwrap();
           unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
       }
-  }
+    }
+    pub fn get_demodulate(&self) -> &[f64] {
+      &self.demodulate_signal
+    }
+    pub fn get_composite(&self) -> &[f64] {
+      &self.composite_signal
+    }
     pub fn init_thread(&mut self) {
+      if self.is_init {
+        return;
+      }
+        self.is_init = true;
         // let modulate_counter = Arc::new(Mutex::new(0));
         // Buffer
         let up_sample_signal_outer1 = Arc::clone(&self.up_sampled_signal);
         let modulate_signal_outer1 = Arc::clone(&self.modulate_signal);
         let intermediate_signal_outer1 = Arc::clone(&self.intermediate_signal);
         let modulate_signal_outer2 = Arc::clone(&self.modulate_signal);
-        let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
-        let intermediate_signal_out1 =
-            Arc::clone(&self.intermediate_signal_out);
+        // let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
+        // let intermediate_signal_out1 =
+        //     Arc::clone(&self.intermediate_signal_out);
         // Modules
         let modulator = Arc::clone(&self.modulator);
         let freq_converter = Arc::clone(&self.freq_converter);
@@ -255,11 +268,13 @@ impl FmRadioSim {
             loop {
                 listener0.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+                  println!("modulation| read: 1 / write: 0");
                     (
                         up_sample_signal[1].lock().unwrap(),
                         modulate_signal[0].lock().unwrap(),
                     )
                 } else {
+                  println!("modulation| read: 0 / write: 1");
                     (
                         up_sample_signal[0].lock().unwrap(),
                         modulate_signal[1].lock().unwrap(),
@@ -282,11 +297,13 @@ impl FmRadioSim {
             loop {
                 listener1.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+                  println!("cvt-freq | read: 1 / write: 0");
                     (
                         modulate_signal[1].lock().unwrap(),
                         intermediate_signal[0].lock().unwrap(),
                     )
                 } else {
+                  println!("cvt-freq | read: 0 / write: 1");
                     (
                         modulate_signal[0].lock().unwrap(),
                         intermediate_signal[1].lock().unwrap(),
@@ -300,33 +317,44 @@ impl FmRadioSim {
                 // println!("fuga");
             }
         });
-        // BPF
-        let _ = thread::spawn(move || {
-            let mut counter = 0;
-            let intermediate_signal = Arc::clone(&intermediate_signal_outer2);
-            let intermediate_signal_out = Arc::clone(&intermediate_signal_out1);
+        // // BPF
+        // Note:個々がバグの原因。
+        // let intermediate_signal = if self.read_state {
+        //   &self.intermediate_signal[1].lock().unwrap()
+        // } else {
+        //   &self.intermediate_signal[0].lock().unwrap()
+        // };
+        // let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
+        // let intermediate_signal_out_outer1 = Arc::clone(&self.intermediate_signal_out);
+        // let _ = thread::spawn(move || {
+        //     let mut counter = 0;
+        //     let intermediate_signal = Arc::clone(&intermediate_signal_outer2);
+        //     let intermediate_signal_out = Arc::clone(&intermediate_signal_out_outer1);
 
-            loop {
-                listener2.wait();
-                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                    (
-                        intermediate_signal[1].lock().unwrap(),
-                        intermediate_signal_out[0].lock().unwrap(),
-                    )
-                } else {
-                    (
-                        intermediate_signal[0].lock().unwrap(),
-                        intermediate_signal_out[1].lock().unwrap(),
-                    )
-                };
-                bandpass_filter
-                    .lock()
-                    .unwrap()
-                    .process(&read_buffer, &mut write_buffer);
-                counter += 1;
-                // println!("piyo");
-            }
-        });
+        //     loop {
+        //         listener2.wait();
+        //         let start = Instant::now();
+        //         let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
+        //           println!("bpf | read: 1 / write: 0");
+        //             (
+        //                 intermediate_signal[1].lock().unwrap(),
+        //                 intermediate_signal_out[0].lock().unwrap(),
+        //             )
+        //         } else {
+        //           println!("bpf | read: 0 / write: 1");
+        //             (
+        //                 intermediate_signal[0].lock().unwrap(),
+        //                 intermediate_signal_out[1].lock().unwrap(),
+        //             )
+        //         };
+        //         bandpass_filter
+        //             .lock()
+        //             .unwrap()
+        //             .process(&read_buffer, &mut write_buffer);
+        //         counter += 1;
+        //         println!("{:?}",start.elapsed());
+        //     }
+        // });
     }
     pub fn process(
         &mut self,
@@ -361,8 +389,10 @@ impl FmRadioSim {
         );
 
         let mut up_sampled_signal = if self.read_state {
+          println!("upsample | write: 0");
             self.up_sampled_signal[0].lock().unwrap()
         } else {
+          println!("upsample | write: 1");
             self.up_sampled_signal[1].lock().unwrap()
         };
         //
@@ -373,25 +403,32 @@ impl FmRadioSim {
                 &raw mut self.upsampler_for_radio_waves,
             );
         }
-        // println!("check point1");
-        //
-        // self.modulator
-        //     .process(&self.up_sampled_signal, &mut self.modulate_signal);
-        // // super heterodyne
-        // self.freq_converter
-        //     .process(&self.modulate_signal, &mut self.intermediate_signal);
-        // self.bandpass_filter.process(
-        //     &self.intermediate_signal,
-        //     &mut self.intermediate_signal_out,
-        // );
-        // de-modulate
-        let intermediate_signal_out = if self.read_state {
-            self.intermediate_signal_out[1].lock().unwrap()
+        let intermediate_signal = if self.read_state {
+          &self.intermediate_signal[1].lock().unwrap()
         } else {
-            self.intermediate_signal_out[0].lock().unwrap()
+          &self.intermediate_signal[0].lock().unwrap()
         };
+        // self.freq_converter.lock().unwrap().process(
+        //   // &self.modulate_signal[0].lock().unwrap(),
+        //   modulate_signal,
+        //   &mut self.intermediate_signal[0].lock().unwrap(),
+        // );
+        self.bandpass_filter.lock().unwrap().process(
+          // &self.intermediate_signal[0].lock().unwrap(),
+          intermediate_signal,
+          &mut self.intermediate_signal_out[!self.read_state as usize].lock().unwrap(),
+      );
+        // de-modulate
+        // let intermediate_signal_out = if self.read_state {
+        //   println!("demodulate | read: 1");
+        //     self.intermediate_signal_out[1].lock().unwrap()
+        // } else {
+        //   println!("demodulate | read: 0");
+        //     self.intermediate_signal_out[0].lock().unwrap()
+        // };
         self.demodulator.process(
-            intermediate_signal_out.deref().as_slice(),
+            // &intermediate_signal_out,
+            &self.intermediate_signal_out[self.read_state as usize].lock().unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");
@@ -405,6 +442,7 @@ impl FmRadioSim {
         }
         self.restore.process(
             &self.post_down_sample,
+            // &self.composite_signal
             &mut self.restored_signal_l,
             &mut self.restored_signal_r,
         );

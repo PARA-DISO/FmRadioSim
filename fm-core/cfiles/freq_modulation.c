@@ -388,7 +388,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   info->prev_internal[0] = prev_a;
   info->prev_internal[1] = prev_b;
 #else
-  // Angles
+  // Angles 
   // print_sd(fc);
   f64x4 delta_angle = _mm256_set1_pd(TAU * fc * sample_period * 4);
   f64x4 angle = _mm256_load_pd(info->angle);
@@ -411,6 +411,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   f64x4 c2 = _mm256_set1_pd(info->filter_coeff.c2);
   f64x4 d0 = _mm256_set1_pd(info->filter_coeff.c3);
   f64x4 d1 = _mm256_set1_pd(info->filter_coeff.c4);
+  printf("lpf coeff: %g,%g,%g,%g,%g\n",info->filter_coeff.c0,info->filter_coeff.c1,info->filter_coeff.c2,info->filter_coeff.c3,info->filter_coeff.c4);
+  printf("demodulate-input: %p\n",input_signal);
   //
   f64x4 d_coeff = _mm256_set1_pd(1 / sample_period);
   for (usize i = 0; i < buf_len; i += 4) {
@@ -541,7 +543,7 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
 void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   usize len = info->input_len;
   usize multiplier = info->multiplier;
-  // printf("len: %ld / multiplier: %ld\n", len,multiplier);
+  printf("len: %lld / multiplier: %lld\n", len,multiplier);
   for (int i = 0, j = 0; i < len; i += multiplier, ++j) {
     dst[j] = input[i];
   }
@@ -563,8 +565,8 @@ void filtering(f64 *dst, f64 *input, FilteringInfo *info, usize buf_len) {
   // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
   f64x2 d0 = _mm_set1_pd(info->coeff.c3);
   f64x2 d1 = _mm_set1_pd(info->coeff.c4);
-  // printf("bpf coeff:
-  // %g,%g,%g,%g,%g\n",info->coeff.c0,info->coeff.c1,info->coeff.c2,info->coeff.c3,info->coeff.c4);
+  printf("bpf coeff: %g,%g,%g,%g,%g\n",info->coeff.c0,info->coeff.c1,info->coeff.c2,info->coeff.c3,info->coeff.c4);
+  printf("bpf-dst: %p\n",dst);
   for (usize i = 0; i < buf_len; i += 4) {
     f64x2 sig_lo = _mm_load_pd(input + i);
     f64x2 sig_hi = _mm_load_pd(input + i + 2);
@@ -600,7 +602,7 @@ void filtering(f64 *dst, f64 *input, FilteringInfo *info, usize buf_len) {
     prev_prev_out = y2;
     prev_sig = s3;
     prev_prev_sig = s2;
-    dst[i >> 2] = 2 * _mm_cvtsd_f64(y3);
+    dst[i >> 2] = 2. * _mm_cvtsd_f64(y3);
     // dst[i>>2] = _mm_cvtsd_f64(sig_lo);
   }
   _mm_store_pd(info->prev_sig, prev_sig);

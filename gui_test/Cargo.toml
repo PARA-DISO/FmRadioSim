@@ -2,6 +2,8 @@
 name = "gui_test"
 version = "0.1.0"
 edition = "2021"
+[build]
+rustflags=["-Z","sanitizer=address"]
 [profile.release]
 # lto = "fat"
 # codegen-units = 1

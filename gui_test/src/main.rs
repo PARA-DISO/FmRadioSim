@@ -22,10 +22,11 @@ const SIGNAL_FREQ: f64 = 440f64;
 const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 10;
+const RENDER_MAX: usize = 20;
+const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
-const DISABLE_AUDIO_INPUT: bool = false;
-const FIXED_RENDERING_DURATION: u64 = 30; // 1ms1
+const DISABLE_AUDIO_INPUT: bool = true;
+const FIXED_RENDERING_DURATION: u64 = 1000; // 1ms1
 const ENABLE_FIXED_TIME_RENDER: bool = true;
 const FRAME_TIME: f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
 
@@ -128,7 +129,7 @@ impl MyChart {
         );
         let mut fm_radio_sim =
             FmRadioSim::from(AUDIO_SAMPLE_RATE, BUFFER_SIZE, CARRIER_FREQ);
-        // fm_radio_sim.init_thread();
+        fm_radio_sim.init_thread();
         Self {
             render_times: 0,
             t: 0.0,
@@ -157,7 +158,8 @@ impl MyChart {
         use std::time::Instant;
         if self.continue_flag && self.render_times < RENDER_MAX {
             // 信号の作成
-            for i in 0..self.input_signal[0].len() {
+            if !self.disable_audio_in {
+              for i in 0..self.input_signal[0].len() {
                 self.input_signal[0][i] = (self.t as f32
                     * 2.
                     * std::f32::consts::PI
@@ -173,17 +175,31 @@ impl MyChart {
                     * A as f32;
                 self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
             }
+            }
+           
             // println!("start processing");
             // up-sample
             let timer = Instant::now();
-            self.fm_radio_sim.process_serial(
+            if ENABLE_PARALLEL {
+             
+            self.fm_radio_sim.process(
+              &self.input_signal[0],
+              &self.input_signal[1],
+              &mut self.output_signal_l,
+              &mut self.output_signal_r,
+            );
+            } else {
+              self.fm_radio_sim.process_serial(
                 &self.input_signal[0],
                 &self.input_signal[1],
                 &mut self.output_signal_l,
                 &mut self.output_signal_r,
-            );
+              );
+            }
+            
+            
             let end_time = timer.elapsed();
-            // println!("================================");
+            println!("================================");
             println!("Elapsed Time: {:?}", end_time);
             // println!("  - Up-Sample: {:?}", lap0);
             // println!("  - Composite: {:?}", lap1 - lap0);
@@ -254,7 +270,12 @@ impl Chart<Message> for MyChart {
                         .collect::<Vec<_>>(),
                     AUDIO_SAMPLE_RATE,
                 ),
-
+                2 => draw_chart(
+                  builder,
+                  labels[i],
+                  self.fm_radio_sim.get_composite(),
+                  FmRadioSim::COMPOSITE_SAMPLE_RATE
+                ),
                 3 => draw_chart(
                     builder,
                     labels[i],
@@ -268,12 +289,13 @@ impl Chart<Message> for MyChart {
                     FmRadioSim::FM_MODULATION_SAMPLE_RATE
                         / FmRadioSim::RATIO_FS_INTER_FS,
                 ),
-                // 5 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     &self.demodulated_signal,
-                //     FM_MODULATION_SAMPLE_RATE / RATIO_FS_INTER_FS,
-                // ),
+                5 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_demodulate(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                ),
                 6 => draw_chart(
                     builder,
                     labels[i],
