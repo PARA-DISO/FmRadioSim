@@ -209,8 +209,8 @@ pub struct BandPassFilter {
     filter_coeff: Bpf,
 }
 impl BandPassFilter {
-    const BAND_WIDTH: f64 = 0.2; // +- 124kHz when fc = 10.7MHz
-    // const BAND_WIDTH: f64 = 0.25;
+    // const BAND_WIDTH: f64 = 0.2; // +- 124kHz when fc = 10.7MHz
+    const BAND_WIDTH: f64 = 0.25;
     pub fn new(fs: f64, cutoff: f64) -> Self {
         Self {
             filter_coeff: Bpf::new(fs, cutoff, Self::BAND_WIDTH),
