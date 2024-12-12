@@ -15,14 +15,16 @@ use fm_core::FmRadioSim;
 // PARAMETERS
 // const BUFFER_SIZE: usize = 730;
 const BUFFER_SIZE: usize = 256;
-const AUDIO_SAMPLE_RATE: usize = 44_100;
+// const AUDIO_SAMPLE_RATE: usize = 44_100;
+const AUDIO_SAMPLE_RATE: usize = 192_000;
 
-const SIGNAL_FREQ: f64 = 440f64;
+// const SIGNAL_FREQ: f64 = 440f64;
+const SIGNAL_FREQ: f64 = 39_000.;
 // const CARRIER_FREQ: f64 = 84_700_000f64;
 const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 20;
+const RENDER_MAX: usize = 10;
 const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
@@ -179,6 +181,7 @@ impl MyChart {
            
             // println!("start processing");
             // up-sample
+            println!("===============Start=================");
             let timer = Instant::now();
             if ENABLE_PARALLEL {
              
@@ -199,8 +202,9 @@ impl MyChart {
             
             
             let end_time = timer.elapsed();
-            println!("================================");
             println!("Elapsed Time: {:?}", end_time);
+            println!("===============END=================");
+            
             // println!("  - Up-Sample: {:?}", lap0);
             // println!("  - Composite: {:?}", lap1 - lap0);
             // println!("  - Up-Sample: {:?}", lap2 - lap1);
@@ -316,20 +320,22 @@ impl Chart<Message> for MyChart {
                         .collect::<Vec<_>>(),
                     AUDIO_SAMPLE_RATE,
                 ),
-                // 8 => draw_spectrum(
-                //   builder,
-                //   labels[i],
-                //   &self.intermediate,
-                //   FM_MODULATION_SAMPLE_RATE >> 2,
-                //   FrequencyLimit::All,
-                // ),
-                // 9 => draw_spectrum(
-                //   builder,
-                //   labels[i],
-                //   &self.demodulated_signal,
-                //   FM_MODULATION_SAMPLE_RATE >> 2,
-                //   FrequencyLimit::All,
-                // ),
+                8 => draw_spectrum(
+                  builder,
+                  labels[i],
+                  self.fm_radio_sim.get_intermediate(),
+                  FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                  FrequencyLimit::All,
+                ),
+                9 => draw_spectrum(
+                  builder,
+                  labels[i],
+                  self.fm_radio_sim.get_demodulate(),
+                  FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                  FrequencyLimit::Max(100_000.),
+                ),
                 _ => {}
             }
         }
@@ -374,7 +380,7 @@ fn draw_chart<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            &RED,
+            if ENABLE_PARALLEL {&plotters::style::colors::CYAN} else{&RED},
         ))
         .unwrap();
 }
@@ -397,7 +403,7 @@ fn draw_spectrum<DB: DrawingBackend>(
     };
     let spectrum = samples_fft_to_spectrum(
         data.iter()
-            .take(n.min(2048))
+            .take(n.min(2048 << 2))
             .map(|x| *x as f32)
             .collect::<Vec<f32>>()
             .as_slice(),
@@ -414,7 +420,7 @@ fn draw_spectrum<DB: DrawingBackend>(
         )
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..sample_rate as f32 / 2f32, 0f32..1f32)
+        .build_cartesian_2d(0f32..limit.maybe_max().unwrap_or(sample_rate as f32 / 2f32), 0f32..1f32)
         .unwrap();
 
     chart
@@ -435,7 +441,7 @@ fn draw_spectrum<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            &RED,
+            if ENABLE_PARALLEL {&plotters::style::colors::CYAN} else{&RED},
         ))
         .unwrap();
 }

@@ -75,7 +75,7 @@ impl Lpf {
         buf
     }
 }
-
+#[derive(Debug)]
 pub struct Hpf {
     c0: f64,
     c1: f64,
@@ -195,7 +195,7 @@ impl Bpf {
     //         .process_without_buffer(buf, &mut filter_info[1])
     // }
 }
-
+#[derive(Debug)]
 pub struct Notch {
     c0: f64,
     c1: f64,

@@ -392,13 +392,6 @@ impl FmRadioSim {
             &mut self.composite_signal,
         );
 
-        // let mut up_sampled_signal = if self.read_state {
-        //   println!("upsample | write: 0");
-        //     self.up_sampled_signal[0].lock().unwrap()
-        // } else {
-        //   println!("upsample | write: 1");
-        //     self.up_sampled_signal[1].lock().unwrap()
-        // };
         //
         unsafe {
             upsample(
@@ -408,29 +401,7 @@ impl FmRadioSim {
                 &raw mut self.upsampler_for_radio_waves,
             );
         }
-        // let intermediate_signal = if self.read_state {
-        //   &self.intermediate_signal[1].lock().unwrap()
-        // } else {
-        //   &self.intermediate_signal[0].lock().unwrap()
-        // };
-        // self.freq_converter.lock().unwrap().process(
-        //   // &self.modulate_signal[0].lock().unwrap(),
-        //   modulate_signal,
-        //   &mut self.intermediate_signal[0].lock().unwrap(),
-        // );
-      //   self.bandpass_filter.lock().unwrap().process(
-      //     // &self.intermediate_signal[0].lock().unwrap(),
-      //     intermediate_signal,
-      //     &mut self.intermediate_signal_out[!self.read_state as usize].lock().unwrap(),
-      // );
-        // de-modulate
-        // let intermediate_signal_out = if self.read_state {
-        //   println!("demodulate | read: 1");
-        //     self.intermediate_signal_out[1].lock().unwrap()
-        // } else {
-        //   println!("demodulate | read: 0");
-        //     self.intermediate_signal_out[0].lock().unwrap()
-        // };
+
         self.demodulator.process(
             // &intermediate_signal_out,
             &self.intermediate_signal_out[dbg!(self.read_state as usize)].lock().unwrap(),
@@ -513,8 +484,8 @@ impl FmRadioSim {
                     .deref_mut()
                     .as_mut_slice()
                     .as_mut_ptr(),
-                self.composite_signal.as_ptr(),
-                // self.audio_in_buffer[0].as_ptr(),
+                // self.composite_signal.as_ptr(),
+                self.audio_in_buffer[0].as_ptr(),
                 &raw mut self.upsampler_for_radio_waves,
             );
         }

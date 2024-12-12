@@ -3,7 +3,8 @@
 #include "rstype.h"
 #define ENABLE_UPSAMPLING 0
 #define TEST_CODE false
-#define DISABLE_SIMD_DEMODULATE 0
+#define DISABLE_SIMD_DEMODULATE 1
+// #define BPF_BYPASS 1
 typedef uint64_t usize;
 typedef double f64;
 typedef __m256d f64x4;

@@ -19,6 +19,53 @@ void _mm256_fprint_pd(FILE* fd, f64x4 v) {
 void _mm_print_pd(f64x2 v) {
   printf("[%f, %f]\n", v.m128d_f64[0], v.m128d_f64[1]);
 }
+//===========================
+void print_filter_info(FilteringInfo* info) {
+  fflush(stdout);
+  printf(
+    "BPF-Info {\n"
+    "  prev-sig: [%g, %g]\n"
+    "  prev_prev_sig: [%g, %g]\n"
+    "  prev_out: [%g, %g]\n"
+    "  prev_prev_out: [%g, %g]\n"
+    "  stage_lo: [%g, %g]\n"
+    "  stage_hi: [%g, %g]\n"
+    "}\n",info->prev_sig[0],info->prev_sig[1],
+    info->prev_prev_sig[0],info->prev_prev_sig[1],
+    info->prev_out[0],info->prev_out[1],
+    info->prev_prev_out[0],info->prev_prev_out[1],
+    info->stage[0],info->stage[1],
+    info->stage[2], info->stage[3]);
+  fflush(stdout);
+}
+void print_demodulate_info(DemodulationInfo* info) {
+  fflush(stdout);
+  printf(
+    "DemodulationInfo{\n"
+    "  angle: [%g, %g, %g, %g]\n"
+    "  prev_sin: [%g, %g, %g, %g]\n"
+    "  prev_sig_lo: [%g, %g, %g, %g]\n"
+    "  prev_sig_hi: [%g, %g, %g, %g]\n"
+    "  prev_sig_internal_lo: [%g, %g, %g, %g]\n"
+    "  prev_sig_internal_hi: [%g, %g, %g, %g]\n"
+    "  prev_sig: [%g, %g, %g, %g]\n"
+    "  prev_prev_sig: [%g, %g, %g, %g]\n"
+    "  prev_out: [%g, %g, %g, %g]\n"
+    "  prev_prev_out: [%g, %g, %g, %g]\n"
+    "}\n",
+    info->angle[0],info->angle[1],info->angle[2],info->angle[3],
+    info->prev_sin[0],info->prev_sin[1],info->prev_sin[2],info->prev_sin[3],
+    info->prev_sig[0],info->prev_sig[1],info->prev_sig[2],info->prev_sig[3],
+    info->prev_sig[4],info->prev_sig[5],info->prev_sig[6],info->prev_sig[7],
+    info->prev_internal[0],info->prev_internal[1],info->prev_internal[2],info->prev_internal[3],
+    info->prev_internal[4],info->prev_internal[5],info->prev_internal[6],info->prev_internal[7],
+    info->filter_info[0],info->filter_info[1],info->filter_info[2],info->filter_info[3],
+    info->filter_info[4],info->filter_info[5],info->filter_info[6],info->filter_info[7],
+    info->filter_info[8],info->filter_info[9],info->filter_info[10],info->filter_info[11],
+    info->filter_info[12],info->filter_info[13],info->filter_info[14],info->filter_info[15]
+  );
+  fflush(stdout);
+}
 //----------------------------
 static const unsigned int crc32tab[256] = { 
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
@@ -473,6 +520,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   info->prev_internal[0] = prev_a;
   info->prev_internal[1] = prev_b;
 #else
+  printf("Demodulate:: Before-Proc\n");
+  print_demodulate_info(info);
   // Angles 
   // print_sd(fc);
   f64x4 delta_angle = _mm256_set1_pd(TAU * fc * sample_period * 4);
@@ -601,6 +650,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   _mm256_store_pd(info->filter_info + 4, prev_prev_sig);
   _mm256_store_pd(info->filter_info + 8, prev_out);
   _mm256_store_pd(info->filter_info + 12, prev_prev_out);
+  printf("Demodulate:: After-Proc\n");
+  print_demodulate_info(info);
 #endif
 }
 
@@ -640,6 +691,8 @@ void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
 }
 
 void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
+  printf("BPF:: Before-Proc\n");
+  print_filter_info(info);
   // prev sigs
   f64x2 prev_sig = _mm_load_pd(info->prev_sig);
   f64x2 prev_prev_sig = _mm_load_pd(info->prev_prev_sig);
@@ -659,6 +712,7 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   printf("bpf-input-crc-before: %lu\n",crc32((char*) input, buf_len * 8));
   fflush(stdout);
   for (usize i = 0; i < buf_len; i += 4) {
+    #ifndef BPF_BYPASS
     f64x2 sig_lo = _mm_load_pd(input + i);
     f64x2 sig_hi = _mm_load_pd(input + i + 2);
     //
@@ -694,6 +748,9 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
     prev_sig = s3;
     prev_prev_sig = s2;
     dst[i >> 2] = 2. * _mm_cvtsd_f64(y3);
+    #else
+      dst[i >> 2] = input[i];
+    #endif
     // dst[i>>2] = _mm_cvtsd_f64(sig_lo);
   }
   printf("bpf-input-crc-after: %lu\n",crc32((char*) input, buf_len * 8));
@@ -705,4 +762,6 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   _mm_store_pd(info->prev_prev_out, prev_prev_out);
   _mm_store_pd(info->stage, stage_lo);
   _mm_store_pd(info->stage + 2, stage_hi);
+  printf("BPF:: After-Proc\n");
+  print_filter_info(info);
 }
