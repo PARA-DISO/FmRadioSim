@@ -66,6 +66,18 @@ void print_demodulate_info(DemodulationInfo* info) {
   );
   fflush(stdout);
 }
+void print_resampler_info(ResamplerInfo* info) {
+  printf(
+    "ResamplerInfo {\n"
+    "  prev: %g\n"
+    "  multiplier: %lld\n"
+    "  input_len: %lld\n"
+    "}\n",
+    info->prev,
+    info->multiplier,
+    info->input_len
+  );
+}
 //----------------------------
 static const unsigned int crc32tab[256] = { 
 	0x00000000, 0x77073096, 0xee0e612c, 0x990951ba,
@@ -640,6 +652,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   }
   printf("demodulate-crc-after: %lu\n",crc32((char*) input_signal, buf_len * 8));
   fflush(stdout);
+  printf("demodulate-crc-write: %lu\n",crc32((char*) output_signal, buf_len * 8));
+  fflush(stdout);
   _mm256_store_pd(info->angle, _mm256_fmod_pd(angle, _mm256_set1_pd(TAU)));
   _mm256_store_pd(info->prev_sin, prev_sin);
   _mm256_store_pd(info->prev_sig, prev_sig_lo);
@@ -682,11 +696,20 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
 
 void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   usize len = info->input_len;
+  print_resampler_info(info);
+  fflush(stdout);
+  printf("downsample-crc-before: %lu\n",crc32((char*) input, len * 8));
+  fflush(stdout);
+  
   usize multiplier = info->multiplier;
   printf("len: %lld / multiplier: %lld\n", len,multiplier);
-  for (int i = 0, j = 0; i < len; i += multiplier, ++j) {
+  for (usize i = 0, j = 0; i < len; i += multiplier, ++j) {
     dst[j] = input[i];
   }
+  printf("downsample-crc-after: %lu\n",crc32((char*) input, len * 8));
+  fflush(stdout);
+  print_resampler_info(info);
+  fflush(stdout);
   // printf("end down sample\n");
 }
 

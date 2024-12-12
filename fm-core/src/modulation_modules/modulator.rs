@@ -128,7 +128,7 @@ impl Modulator {
                 TAU * f * sample_period * 3.,
             ],
             // prev_sig: 0.0,
-            // modulation_index: 47./53.,
+            // modulation_index: 2.,
             modulation_index: 47. / 53.,
             // sample_rate,
             sample_period,

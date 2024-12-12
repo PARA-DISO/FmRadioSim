@@ -87,7 +87,8 @@ pub struct FmRadioSim {
 }
 impl FmRadioSim {
     // define constants
-    pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
+    // pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
+    pub const COMPOSITE_SAMPLE_RATE: usize = 192_000;
     pub const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
     pub const INTERMEDIATE_FREQ: f64 = 10_700_000f64; // JISC6421:1994
                                                       // pub const INTERMEDIATE_FREQ: f64 = 79_500_000f64 - 440f64;
@@ -205,7 +206,7 @@ impl FmRadioSim {
             // demodulate_signal: generate_pipline_buffer(
             //     intermediate_buffer_size,
             // ),
-            demodulate_signal: vec![0.; intermediate_buffer_size],
+            demodulate_signal: vec![0.; dbg!(intermediate_buffer_size)],
             post_down_sample: vec![0.; composite_buffer_size],
             restored_signal_l: vec![0.; composite_buffer_size],
             restored_signal_r: vec![0.; composite_buffer_size],
@@ -239,6 +240,9 @@ impl FmRadioSim {
     }
     pub fn get_composite(&self) -> &[f64] {
       &self.composite_signal
+    }
+    pub fn get_down_sampling(&self) -> &[f64] {
+      &self.post_down_sample
     }
     pub fn init_thread(&mut self) {
         if self.is_init {
@@ -484,8 +488,8 @@ impl FmRadioSim {
                     .deref_mut()
                     .as_mut_slice()
                     .as_mut_ptr(),
-                // self.composite_signal.as_ptr(),
-                self.audio_in_buffer[0].as_ptr(),
+                self.composite_signal.as_ptr(),
+                // self.audio_in_buffer[0].as_ptr(),
                 &raw mut self.upsampler_for_radio_waves,
             );
         }
@@ -505,12 +509,12 @@ impl FmRadioSim {
         let lap4 = timer_start.elapsed();
         self.bandpass_filter.lock().unwrap().process(
             &self.intermediate_signal[0].lock().unwrap(),
-            &mut self.intermediate_signal_out[0].lock().unwrap(),
+            &mut self.intermediate_signal_out[1].lock().unwrap(),
         );
         // de-modulate
         let lap5 = timer_start.elapsed();
         self.demodulator.process(
-            &self.intermediate_signal_out[0].lock().unwrap(),
+            &self.intermediate_signal_out[1].lock().unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");

@@ -15,16 +15,16 @@ use fm_core::FmRadioSim;
 // PARAMETERS
 // const BUFFER_SIZE: usize = 730;
 const BUFFER_SIZE: usize = 256;
-// const AUDIO_SAMPLE_RATE: usize = 44_100;
-const AUDIO_SAMPLE_RATE: usize = 192_000;
+const AUDIO_SAMPLE_RATE: usize = 44_100;
+// const AUDIO_SAMPLE_RATE: usize = 192_000;
 
-// const SIGNAL_FREQ: f64 = 440f64;
-const SIGNAL_FREQ: f64 = 39_000.;
+const SIGNAL_FREQ: f64 = 440f64;
+// const SIGNAL_FREQ: f64 = 39_000.;
 // const CARRIER_FREQ: f64 = 84_700_000f64;
 const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 10;
+const RENDER_MAX: usize = 20;
 const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
@@ -250,7 +250,7 @@ impl Chart<Message> for MyChart {
             "R Out",
             "Intermediate Spectrum",
             "Demodulate Spectrum",
-            "",
+            "DownSampling DeMod",
             "",
         ];
         for (i, area) in children.iter().enumerate() {
@@ -336,6 +336,8 @@ impl Chart<Message> for MyChart {
                         / FmRadioSim::RATIO_FS_INTER_FS,
                   FrequencyLimit::Max(100_000.),
                 ),
+                10 => draw_chart(builder, labels[i], self.fm_radio_sim.get_down_sampling(), FmRadioSim::COMPOSITE_SAMPLE_RATE),
+                11 => draw_spectrum(builder, labels[i], self.fm_radio_sim.get_down_sampling(),  FmRadioSim::COMPOSITE_SAMPLE_RATE, FrequencyLimit::All),
                 _ => {}
             }
         }
@@ -380,7 +382,7 @@ fn draw_chart<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            if ENABLE_PARALLEL {&plotters::style::colors::CYAN} else{&RED},
+            if ENABLE_PARALLEL {&plotters::style::colors::GREEN} else{&RED},
         ))
         .unwrap();
 }
@@ -441,7 +443,7 @@ fn draw_spectrum<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            if ENABLE_PARALLEL {&plotters::style::colors::CYAN} else{&RED},
+            if ENABLE_PARALLEL {&plotters::style::colors::GREEN} else{&RED},
         ))
         .unwrap();
 }
