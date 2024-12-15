@@ -89,7 +89,8 @@ impl FmRadioSim {
     // define constants
     // pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
     pub const COMPOSITE_SAMPLE_RATE: usize = 192_000;
-    pub const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
+    // pub const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
+    pub const FM_MODULATION_SAMPLE_RATE: usize = 190_000_000;
     pub const INTERMEDIATE_FREQ: f64 = 10_700_000f64; // JISC6421:1994
                                                       // pub const INTERMEDIATE_FREQ: f64 = 79_500_000f64 - 440f64;
     pub const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.; // x2 Composite freq max
@@ -276,13 +277,13 @@ impl FmRadioSim {
             loop {
                 listener0.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  println!("modulation| read: 1 / write: 0");
+                  // println!("modulation| read: 1 / write: 0");
                     (
                         up_sample_signal[1].lock().unwrap(),
                         modulate_signal[0].lock().unwrap(),
                     )
                 } else {
-                  println!("modulation| read: 0 / write: 1");
+                  // println!("modulation| read: 0 / write: 1");
                     (
                         up_sample_signal[0].lock().unwrap(),
                         modulate_signal[1].lock().unwrap(),
@@ -293,6 +294,7 @@ impl FmRadioSim {
                     .unwrap()
                     .process(&read_buffer, &mut write_buffer);
                 // println!("hoge");
+                listener0.wait();
                 counter += 1;
             }
         });}
@@ -305,13 +307,13 @@ impl FmRadioSim {
             loop {
                 listener1.wait();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  println!("cvt-freq | read: 1 / write: 0");
+                  // println!("cvt-freq | read: 1 / write: 0");
                     (
                         modulate_signal[1].lock().unwrap(),
                         intermediate_signal[0].lock().unwrap(),
                     )
                 } else {
-                  println!("cvt-freq | read: 0 / write: 1");
+                  // println!("cvt-freq | read: 0 / write: 1");
                     (
                         modulate_signal[0].lock().unwrap(),
                         intermediate_signal[1].lock().unwrap(),
@@ -321,6 +323,7 @@ impl FmRadioSim {
                     .lock()
                     .unwrap()
                     .process(&read_buffer, &mut write_buffer);
+                listener1.wait();
                 counter += 1;
                 // println!("fuga");
             }
@@ -343,13 +346,13 @@ impl FmRadioSim {
                 listener2.wait();
                 // let start = Instant::now();
                 let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  println!("bpf | read: 1 / write: 0");
+                  // println!("bpf | read: 1 / write: 0");
                     (
                         intermediate_signal[1].lock().unwrap(),
                         intermediate_signal_out[0].lock().unwrap(),
                     )
                 } else {
-                  println!("bpf | read: 0 / write: 1");
+                  // println!("bpf | read: 0 / write: 1");
                     (
                         intermediate_signal[0].lock().unwrap(),
                         intermediate_signal_out[1].lock().unwrap(),
@@ -359,6 +362,7 @@ impl FmRadioSim {
                     .lock()
                     .unwrap()
                     .process(&read_buffer, &mut write_buffer);
+                listener2.wait();
                 counter += 1;
                 // println!("{:?}",start.elapsed());
             }
@@ -408,7 +412,7 @@ impl FmRadioSim {
 
         self.demodulator.process(
             // &intermediate_signal_out,
-            &self.intermediate_signal_out[dbg!(self.read_state as usize)].lock().unwrap(),
+            &self.intermediate_signal_out[self.read_state as usize].lock().unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");
@@ -444,6 +448,7 @@ impl FmRadioSim {
         }
         // println!("check point3");
         self.read_state ^= true;
+        self.barrier.wait();
     }
     pub fn process_serial(
         &mut self,
@@ -509,12 +514,12 @@ impl FmRadioSim {
         let lap4 = timer_start.elapsed();
         self.bandpass_filter.lock().unwrap().process(
             &self.intermediate_signal[0].lock().unwrap(),
-            &mut self.intermediate_signal_out[1].lock().unwrap(),
+            &mut self.intermediate_signal_out[0].lock().unwrap(),
         );
         // de-modulate
         let lap5 = timer_start.elapsed();
         self.demodulator.process(
-            &self.intermediate_signal_out[1].lock().unwrap(),
+            &self.intermediate_signal_out[0].lock().unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");

@@ -222,7 +222,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   info->integral[0] = current_sum;
   info->prev_sig[0] = prev;
 #else
-  ptr_print(input_signal,output_signal);
+  // ptr_print(input_signal,output_signal);
   f64x4 angle = _mm256_load_pd(info->t);
   f64x4 phi =
       _mm256_set1_pd(TAU * info->carrier_freq * info->sample_period * 4.);
@@ -471,7 +471,7 @@ void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
 #else
   // f64x4 prev_cos = _mm256_load_pd(info->prev_cos); // -0.5 0.5 1.5 2.5
   // f64x4 next_cos = _mm256_load_pd(info->next_cos); // 3.5 4.5 5.5 6.5
-  ptr_print(input_signal,output_signal);
+  // ptr_print(input_signal,output_signal);
   f64x4 angle = _mm256_load_pd(info->angle);
   f64x4 full_delta_angle = _mm256_set1_pd(info->delta_angle * 4);
   for (usize i = 0, j = 0; i < buf_len; i += 8) {
@@ -486,8 +486,8 @@ void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
     _mm256_store_pd(output_signal + i, sig1);
     _mm256_store_pd(output_signal + i + 4, sig2);
   }
-  printf("cvt-freq-crc: %lu\n",crc32((char*) output_signal, buf_len * 8));
-  fflush(stdout);
+  // printf("cvt-freq-crc: %lu\n",crc32((char*) output_signal, buf_len * 8));
+  // fflush(stdout);
   // _mm256_store_pd(info->next_cos,next_cos);
   _mm256_store_pd(info->angle, _mm256_fmod_pd(angle, _mm256_set1_pd(TAU)));
 #endif
@@ -532,8 +532,9 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   info->prev_internal[0] = prev_a;
   info->prev_internal[1] = prev_b;
 #else
-  printf("Demodulate:: Before-Proc\n");
-  print_demodulate_info(info);
+  // printf("Demodulate:: Before-Proc\n");
+  // print_demodulate_info(info);
+  // printf("buffer size: %lld (%g)\n", buf_len,buf_len/4.);
   // Angles 
   // print_sd(fc);
   f64x4 delta_angle = _mm256_set1_pd(TAU * fc * sample_period * 4);
@@ -557,11 +558,12 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   f64x4 c2 = _mm256_set1_pd(info->filter_coeff.c2);
   f64x4 d0 = _mm256_set1_pd(info->filter_coeff.c3);
   f64x4 d1 = _mm256_set1_pd(info->filter_coeff.c4);
-  printf("lpf coeff: %g,%g,%g,%g,%g\n",info->filter_coeff.c0,info->filter_coeff.c1,info->filter_coeff.c2,info->filter_coeff.c3,info->filter_coeff.c4);
-  ptr_print(input_signal,output_signal);
-  printf("demodulate-crc-before: %lu\n",crc32((char*) input_signal, buf_len * 8));
-  fflush(stdout);
-  //
+  // printf("lpf coeff: %g,%g,%g,%g,%g\n",info->filter_coeff.c0,info->filter_coeff.c1,info->filter_coeff.c2,info->filter_coeff.c3,info->filter_coeff.c4);
+  // ptr_print(input_signal,output_signal);
+  // printf("demodulate-crc-before: %lu\n",crc32((char*) input_signal, buf_len * 8));
+  // fflush(stdout);
+  // //
+  // printf("prev sig | prev prev sig @ demodulate\n");
   f64x4 d_coeff = _mm256_set1_pd(1 / sample_period);
   for (usize i = 0; i < buf_len; i += 4) {
     // Removing Carrier
@@ -586,6 +588,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
     f64x4 s2 = _mm256_permute2f128_pd(sig_lo, prev_sig_lo, 0x31);
     f64x4 s1 = _mm256_permute2f128_pd(sig_hi, prev_sig_hi, 0x20);
     f64x4 s3 = _mm256_permute2f128_pd(sig_hi, prev_sig_hi, 0x31);
+    // _mm256_print_pd(s3);
+
     // LPF Process
     // c0 * x[i] + c1 * x[i-1] + c2 * x[i-2] - d0 * y[i-1] - d1 * y[i-2]
     f64x4 o0 = _mm256_fmadd_pd(
@@ -649,11 +653,14 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
     prev_sig_hi = _mm256_permute2f128_pd(o1, o3, 0x20);
     prev_sig_internal_lo = s_lo;
     prev_sig_internal_hi = s_hi;
+    // _mm256_print_pd(prev_sig);
+    // _mm256_print_pd(prev_prev_sig);
   }
-  printf("demodulate-crc-after: %lu\n",crc32((char*) input_signal, buf_len * 8));
-  fflush(stdout);
-  printf("demodulate-crc-write: %lu\n",crc32((char*) output_signal, buf_len * 8));
-  fflush(stdout);
+  // printf("demodulate-crc-after: %lu\n",crc32((char*) input_signal, buf_len * 8));
+  // fflush(stdout);
+  // printf("demodulate-crc-write: %lu\n",crc32((char*) output_signal, buf_len * 8));
+  // fflush(stdout);
+  
   _mm256_store_pd(info->angle, _mm256_fmod_pd(angle, _mm256_set1_pd(TAU)));
   _mm256_store_pd(info->prev_sin, prev_sin);
   _mm256_store_pd(info->prev_sig, prev_sig_lo);
@@ -664,8 +671,8 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   _mm256_store_pd(info->filter_info + 4, prev_prev_sig);
   _mm256_store_pd(info->filter_info + 8, prev_out);
   _mm256_store_pd(info->filter_info + 12, prev_prev_out);
-  printf("Demodulate:: After-Proc\n");
-  print_demodulate_info(info);
+  // printf("Demodulate:: After-Proc\n");
+  // print_demodulate_info(info);
 #endif
 }
 
@@ -696,26 +703,26 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
 
 void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   usize len = info->input_len;
-  print_resampler_info(info);
-  fflush(stdout);
-  printf("downsample-crc-before: %lu\n",crc32((char*) input, len * 8));
-  fflush(stdout);
+  // print_resampler_info(info);
+  // fflush(stdout);
+  // printf("downsample-crc-before: %lu\n",crc32((char*) input, len * 8));
+  // fflush(stdout);
   
   usize multiplier = info->multiplier;
-  printf("len: %lld / multiplier: %lld\n", len,multiplier);
+  // printf("len: %lld / multiplier: %lld\n", len,multiplier);
   for (usize i = 0, j = 0; i < len; i += multiplier, ++j) {
     dst[j] = input[i];
   }
-  printf("downsample-crc-after: %lu\n",crc32((char*) input, len * 8));
-  fflush(stdout);
-  print_resampler_info(info);
-  fflush(stdout);
+  // printf("downsample-crc-after: %lu\n",crc32((char*) input, len * 8));
+  // fflush(stdout);
+  // print_resampler_info(info);
+  // fflush(stdout);
   // printf("end down sample\n");
 }
 
 void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
-  printf("BPF:: Before-Proc\n");
-  print_filter_info(info);
+  // printf("BPF:: Before-Proc\n");
+  // print_filter_info(info);
   // prev sigs
   f64x2 prev_sig = _mm_load_pd(info->prev_sig);
   f64x2 prev_prev_sig = _mm_load_pd(info->prev_prev_sig);
@@ -730,10 +737,10 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
   f64x2 d0 = _mm_set1_pd(info->coeff.c3);
   f64x2 d1 = _mm_set1_pd(info->coeff.c4);
-  printf("bpf coeff: %g,%g,%g,%g,%g\n",info->coeff.c0,info->coeff.c1,info->coeff.c2,info->coeff.c3,info->coeff.c4);
-  ptr_print(input,dst);
-  printf("bpf-input-crc-before: %lu\n",crc32((char*) input, buf_len * 8));
-  fflush(stdout);
+  // printf("bpf coeff: %g,%g,%g,%g,%g\n",info->coeff.c0,info->coeff.c1,info->coeff.c2,info->coeff.c3,info->coeff.c4);
+  // ptr_print(input,dst);
+  // printf("bpf-input-crc-before: %lu\n",crc32((char*) input, buf_len * 8));
+  // fflush(stdout);
   for (usize i = 0; i < buf_len; i += 4) {
     #ifndef BPF_BYPASS
     f64x2 sig_lo = _mm_load_pd(input + i);
@@ -776,15 +783,17 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
     #endif
     // dst[i>>2] = _mm_cvtsd_f64(sig_lo);
   }
-  printf("bpf-input-crc-after: %lu\n",crc32((char*) input, buf_len * 8));
-  printf("bpf-dst-crc: %lu\n",crc32((char*) dst, buf_len * 2));
-  fflush(stdout);
+  // usize dst_len = buf_len /4;
+  // printf("================\n[..., %g, %g, %g, %g,%g, %g, %g, %g]\n================\n", dst[dst_len-8],dst[dst_len-7],dst[dst_len-6],dst[dst_len-5] ,dst[buf_len-4], dst[buf_len-3], dst[buf_len-2], dst[buf_len-1]);
+  // printf("bpf-input-crc-after: %lu\n",crc32((char*) input, buf_len * 8));
+  // printf("bpf-dst-crc: %lu\n",crc32((char*) dst, buf_len * 2));
+  // fflush(stdout);
   _mm_store_pd(info->prev_sig, prev_sig);
   _mm_store_pd(info->prev_prev_sig, prev_prev_sig);
   _mm_store_pd(info->prev_out, prev_out);
   _mm_store_pd(info->prev_prev_out, prev_prev_out);
   _mm_store_pd(info->stage, stage_lo);
   _mm_store_pd(info->stage + 2, stage_hi);
-  printf("BPF:: After-Proc\n");
-  print_filter_info(info);
+  // printf("BPF:: After-Proc\n");
+  // print_filter_info(info);
 }
