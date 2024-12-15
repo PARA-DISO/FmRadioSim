@@ -48,6 +48,12 @@ extern "C" {
         filter_coeff: *mut modulator::BandPassFilter,
         buf_len: u64,
     );
+    fn filtering_with_resample(
+        output_signal: *mut f64,
+        input_signal: *const f64,
+        filter_coeff: *mut modulator::BandPassFilter,
+        buf_len: u64,
+    );
 }
 
 pub struct FmRadioSim {
@@ -60,7 +66,10 @@ pub struct FmRadioSim {
     modulator: Shareable<modulator::Modulator>,
     demodulator: modulator::DeModulator,
     freq_converter: Shareable<modulator::CvtIntermediateFreq>,
-    bandpass_filter: Shareable<modulator::BandPassFilter>,
+
+    bandpass_filter1: Shareable<modulator::BandPassFilter>,
+    bandpass_filter2: Shareable<modulator::BandPassFilter>,
+
     // resampler
     upsampler: [Soxr; 2],
     downsampler: [Soxr; 2],
@@ -73,8 +82,9 @@ pub struct FmRadioSim {
     composite_signal: Vec<f64>,     // 125kHz
     up_sampled_signal: PipeLineBuffer, // 192MHz
     modulate_signal: PipeLineBuffer, // 192MHz
-    intermediate_signal: PipeLineBuffer, // 192MHz (inner 384MHz)
-    intermediate_signal_out: PipeLineBuffer, // 48MHz
+    intermediate_signal1: PipeLineBuffer, // 192MHz (inner 384MHz)
+    intermediate_signal2: PipeLineBuffer, // 48MHz?
+    intermediate_signal3: PipeLineBuffer, // 48MHz
     // demodulate_signal: PipeLineBuffer, // 48MHz
     demodulate_signal: Vec<f64>,
     post_down_sample: Vec<f64>, // 125kHz
@@ -90,7 +100,7 @@ impl FmRadioSim {
     // pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
     pub const COMPOSITE_SAMPLE_RATE: usize = 192_000;
     // pub const FM_MODULATION_SAMPLE_RATE: usize = 192_000_000;
-    pub const FM_MODULATION_SAMPLE_RATE: usize = 190_000_000;
+    pub const FM_MODULATION_SAMPLE_RATE: usize = 185_000_000;
     pub const INTERMEDIATE_FREQ: f64 = 10_700_000f64; // JISC6421:1994
                                                       // pub const INTERMEDIATE_FREQ: f64 = 79_500_000f64 - 440f64;
     pub const SIGNAL_MAX_FREQ: f64 = 53_000. * 2.; // x2 Composite freq max
@@ -175,7 +185,11 @@ impl FmRadioSim {
                 carrier_freq,
                 Self::INTERMEDIATE_FREQ,
             )),
-            bandpass_filter: sharable!(modulator::BandPassFilter::new(
+            bandpass_filter1: sharable!(modulator::BandPassFilter::new(
+                fm_sample_rate as f64,
+                Self::INTERMEDIATE_FREQ,
+            )),
+            bandpass_filter2: sharable!(modulator::BandPassFilter::new(
                 fm_sample_rate as f64,
                 Self::INTERMEDIATE_FREQ,
             )),
@@ -184,7 +198,6 @@ impl FmRadioSim {
                 intermediate_fs as f64,
                 // 880.
                 Self::SIGNAL_MAX_FREQ,
-
             ),
             // resampler
             upsampler,
@@ -200,8 +213,13 @@ impl FmRadioSim {
             composite_signal: vec![0.; composite_buffer_size],
             up_sampled_signal: generate_pipline_buffer(modulated_buffer_size),
             modulate_signal: generate_pipline_buffer(modulated_buffer_size),
-            intermediate_signal: generate_pipline_buffer(modulated_buffer_size),
-            intermediate_signal_out: generate_pipline_buffer(
+            intermediate_signal1: generate_pipline_buffer(
+                modulated_buffer_size,
+            ),
+            intermediate_signal2: generate_pipline_buffer(
+                modulated_buffer_size,
+            ),
+            intermediate_signal3: generate_pipline_buffer(
                 intermediate_buffer_size,
             ),
             // demodulate_signal: generate_pipline_buffer(
@@ -213,160 +231,145 @@ impl FmRadioSim {
             restored_signal_r: vec![0.; composite_buffer_size],
             //
             read_state: true,
-            barrier: Arc::new(Barrier::new(4)),
+            barrier: Arc::new(Barrier::new(5)),
             // barrier: Arc::new(Barrier::new(3)),
             is_init: false,
         }
     }
     pub fn get_intermediate(&self) -> &[f64] {
         if self.read_state {
-            let array = (self.intermediate_signal_out[0]).lock().unwrap();
+            let array = (self.intermediate_signal3[0]).lock().unwrap();
             unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
         } else {
-            let array = (self.intermediate_signal_out[1]).lock().unwrap();
+            let array = (self.intermediate_signal3[1]).lock().unwrap();
             unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
         }
     }
     pub fn get_modulate(&self) -> &[f64] {
-      if self.read_state {
-          let array = (self.modulate_signal[0]).lock().unwrap();
-          unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
-      } else {
-          let array = (self.modulate_signal[1]).lock().unwrap();
-          unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
-      }
+        if self.read_state {
+            let array = (self.modulate_signal[0]).lock().unwrap();
+            unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
+        } else {
+            let array = (self.modulate_signal[1]).lock().unwrap();
+            unsafe { std::slice::from_raw_parts(array.as_ptr(), array.len()) }
+        }
     }
     pub fn get_demodulate(&self) -> &[f64] {
-      &self.demodulate_signal
+        &self.demodulate_signal
     }
     pub fn get_composite(&self) -> &[f64] {
-      &self.composite_signal
+        &self.composite_signal
     }
     pub fn get_down_sampling(&self) -> &[f64] {
-      &self.post_down_sample
+        &self.post_down_sample
     }
     pub fn init_thread(&mut self) {
         if self.is_init {
-          println!("threads is already init.");
-          return;
+            println!("threads is already init.");
+            return;
         }
         self.is_init = true;
         println!("initialize Threads.");
-        // let modulate_counter = Arc::new(Mutex::new(0));
-        // Buffer
-        let up_sample_signal_outer1 = Arc::clone(&self.up_sampled_signal);
-        let modulate_signal_outer1 = Arc::clone(&self.modulate_signal);
-        let intermediate_signal_outer1 = Arc::clone(&self.intermediate_signal);
-        let modulate_signal_outer2 = Arc::clone(&self.modulate_signal);
-        // let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
-        // let intermediate_signal_out1 =
-        //     Arc::clone(&self.intermediate_signal_out);
         // Modules
-        let modulator = Arc::clone(&self.modulator);
-        let freq_converter = Arc::clone(&self.freq_converter);
-        let bandpass_filter = Arc::clone(&self.bandpass_filter);
         let listener0 = Arc::clone(&self.barrier);
         let listener1 = Arc::clone(&self.barrier);
         let listener2 = Arc::clone(&self.barrier);
+        let listener3 = Arc::clone(&self.barrier);
         // Modulation Process
-        {let _ = thread::spawn(move || {
-            let mut counter = 0;
-            let up_sample_signal = Arc::clone(&up_sample_signal_outer1);
-            let modulate_signal = Arc::clone(&modulate_signal_outer1);
+        {
+            let modulator = Arc::clone(&self.modulator);
+            let up_sample_signal = Arc::clone(&self.up_sampled_signal);
+            let modulate_signal = Arc::clone(&self.modulate_signal);
+            let _ = thread::spawn(move || {
+                let mut state = false;
+                let up_sample_signal = Arc::clone(&up_sample_signal);
+                let modulate_signal = Arc::clone(&modulate_signal);
 
-            loop {
-                listener0.wait();
-                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  // println!("modulation| read: 1 / write: 0");
-                    (
-                        up_sample_signal[1].lock().unwrap(),
-                        modulate_signal[0].lock().unwrap(),
-                    )
-                } else {
-                  // println!("modulation| read: 0 / write: 1");
-                    (
-                        up_sample_signal[0].lock().unwrap(),
-                        modulate_signal[1].lock().unwrap(),
-                    )
-                };
-                modulator
-                    .lock()
-                    .unwrap()
-                    .process(&read_buffer, &mut write_buffer);
-                // println!("hoge");
-                listener0.wait();
-                counter += 1;
-            }
-        });}
+                loop {
+                    listener0.wait();
+                    modulator.lock().unwrap().process(
+                        &up_sample_signal[(!state) as usize].lock().unwrap(),
+                        &mut modulate_signal[state as usize].lock().unwrap(),
+                    );
+                    // println!("hoge");
+                    listener0.wait();
+                    state ^= true;
+                }
+            });
+        }
         // Convert-fi Process
-        {let _ = thread::spawn(move || {
-            let mut counter = 0;
-            let intermediate_signal = Arc::clone(&intermediate_signal_outer1);
-            let modulate_signal = Arc::clone(&modulate_signal_outer2);
+        {
+            let intermediate_signal = Arc::clone(&self.intermediate_signal1);
+            let modulate_signal = Arc::clone(&self.modulate_signal);
+            let freq_converter = Arc::clone(&self.freq_converter);
+            let _ = thread::spawn(move || {
+                let mut state = false;
+                let intermediate_signal = Arc::clone(&intermediate_signal);
+                let modulate_signal = Arc::clone(&modulate_signal);
 
-            loop {
-                listener1.wait();
-                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  // println!("cvt-freq | read: 1 / write: 0");
-                    (
-                        modulate_signal[1].lock().unwrap(),
-                        intermediate_signal[0].lock().unwrap(),
-                    )
-                } else {
-                  // println!("cvt-freq | read: 0 / write: 1");
-                    (
-                        modulate_signal[0].lock().unwrap(),
-                        intermediate_signal[1].lock().unwrap(),
-                    )
-                };
-                freq_converter
-                    .lock()
-                    .unwrap()
-                    .process(&read_buffer, &mut write_buffer);
-                listener1.wait();
-                counter += 1;
-                // println!("fuga");
-            }
-        });}
-        // // BPF
-        // Note:個々がバグの原因。
-        // let intermediate_signal = if self.read_state {
-        //   &self.intermediate_signal[1].lock().unwrap()
-        // } else {
-        //   &self.intermediate_signal[0].lock().unwrap()
-        // };
-        {let intermediate_signal_outer2 = Arc::clone(&self.intermediate_signal);
-        let intermediate_signal_out_outer1 = Arc::clone(&self.intermediate_signal_out);
-        let _ = thread::spawn(move || {
-            let mut counter = 0;
-            let intermediate_signal = Arc::clone(&intermediate_signal_outer2);
-            let intermediate_signal_out = Arc::clone(&intermediate_signal_out_outer1);
+                loop {
+                    listener1.wait();
+                    freq_converter.lock().unwrap().process(
+                        &modulate_signal[(!state) as usize].lock().unwrap(),
+                        &mut intermediate_signal[state as usize]
+                            .lock()
+                            .unwrap(),
+                    );
+                    listener1.wait();
+                    state ^= true;
+                    // println!("fuga");
+                }
+            });
+        }
+        // BPF
+        {
+            let bandpass_filter = Arc::clone(&self.bandpass_filter1);
+            let intermediate_signal_in = Arc::clone(&self.intermediate_signal1);
+            let intermediate_signal_out =
+                Arc::clone(&self.intermediate_signal2);
+            let _ = thread::spawn(move || {
+                let mut state = false;
+                let intermediate_signal = Arc::clone(&intermediate_signal_in);
+                let intermediate_signal_out =
+                    Arc::clone(&intermediate_signal_out);
 
-            loop {
-                listener2.wait();
-                // let start = Instant::now();
-                let (read_buffer, mut write_buffer) = if counter & 1 == 0 {
-                  // println!("bpf | read: 1 / write: 0");
-                    (
-                        intermediate_signal[1].lock().unwrap(),
-                        intermediate_signal_out[0].lock().unwrap(),
-                    )
-                } else {
-                  // println!("bpf | read: 0 / write: 1");
-                    (
-                        intermediate_signal[0].lock().unwrap(),
-                        intermediate_signal_out[1].lock().unwrap(),
-                    )
-                };
-                bandpass_filter
-                    .lock()
-                    .unwrap()
-                    .process(&read_buffer, &mut write_buffer);
-                listener2.wait();
-                counter += 1;
-                // println!("{:?}",start.elapsed());
-            }
-        });}
+                loop {
+                    listener2.wait();
+                    bandpass_filter.lock().unwrap().process_no_resample(
+                        &intermediate_signal[(!state) as usize].lock().unwrap(),
+                        &mut intermediate_signal_out[state as usize]
+                            .lock()
+                            .unwrap(),
+                    );
+                    listener2.wait();
+                    state ^= true;
+                }
+            });
+        }
+        {
+          let bandpass_filter = Arc::clone(&self.bandpass_filter2);
+          let intermediate_signal_in = Arc::clone(&self.intermediate_signal2);
+          let intermediate_signal_out =
+              Arc::clone(&self.intermediate_signal3);
+          let _ = thread::spawn(move || {
+              let mut state = false;
+              let intermediate_signal = Arc::clone(&intermediate_signal_in);
+              let intermediate_signal_out =
+                  Arc::clone(&intermediate_signal_out);
+
+              loop {
+                  listener3.wait();
+                  bandpass_filter.lock().unwrap().process(
+                      &intermediate_signal[(!state) as usize].lock().unwrap(),
+                      &mut intermediate_signal_out[state as usize]
+                          .lock()
+                          .unwrap(),
+                  );
+                  listener3.wait();
+                  state ^= true;
+              }
+          });
+      }
     }
     pub fn process(
         &mut self,
@@ -403,7 +406,12 @@ impl FmRadioSim {
         //
         unsafe {
             upsample(
-              self.up_sampled_signal[(!self.read_state) as usize].lock().unwrap().deref_mut().as_mut_slice().as_mut_ptr(),
+                self.up_sampled_signal[(!self.read_state) as usize]
+                    .lock()
+                    .unwrap()
+                    .deref_mut()
+                    .as_mut_slice()
+                    .as_mut_ptr(),
                 self.composite_signal.as_ptr(),
                 // self.audio_in_buffer[0].as_ptr(),
                 &raw mut self.upsampler_for_radio_waves,
@@ -412,7 +420,9 @@ impl FmRadioSim {
 
         self.demodulator.process(
             // &intermediate_signal_out,
-            &self.intermediate_signal_out[self.read_state as usize].lock().unwrap(),
+            &self.intermediate_signal3[self.read_state as usize]
+                .lock()
+                .unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");
@@ -509,22 +519,27 @@ impl FmRadioSim {
         // super heterodyne
         self.freq_converter.lock().unwrap().process(
             &self.modulate_signal[0].lock().unwrap(),
-            &mut self.intermediate_signal[0].lock().unwrap(),
+            &mut self.intermediate_signal1[0].lock().unwrap(),
         );
         let lap4 = timer_start.elapsed();
-        self.bandpass_filter.lock().unwrap().process(
-            &self.intermediate_signal[0].lock().unwrap(),
-            &mut self.intermediate_signal_out[0].lock().unwrap(),
+        self.bandpass_filter1.lock().unwrap().process_no_resample(
+            &self.intermediate_signal1[0].lock().unwrap(),
+            &mut self.intermediate_signal2[0].lock().unwrap(),
+        );
+        let lap5 = timer_start.elapsed();
+        self.bandpass_filter2.lock().unwrap().process(
+            &self.intermediate_signal2[0].lock().unwrap(),
+            &mut self.intermediate_signal3[0].lock().unwrap(),
         );
         // de-modulate
-        let lap5 = timer_start.elapsed();
+        let lap6 = timer_start.elapsed();
         self.demodulator.process(
-            &self.intermediate_signal_out[0].lock().unwrap(),
+            &self.intermediate_signal3[0].lock().unwrap(),
             &mut self.demodulate_signal,
         );
         // println!("check point2");
         //
-        let lap6 = timer_start.elapsed();
+        let lap7 = timer_start.elapsed();
         unsafe {
             downsample(
                 self.post_down_sample.as_mut_ptr(),
@@ -532,13 +547,13 @@ impl FmRadioSim {
                 &raw mut self.downsampler_for_radio_waves,
             );
         }
-        let lap7 = timer_start.elapsed();
+        let lap8 = timer_start.elapsed();
         self.restore.process(
             &self.post_down_sample,
             &mut self.restored_signal_l,
             &mut self.restored_signal_r,
         );
-        let lap8 = timer_start.elapsed();
+        let lap9 = timer_start.elapsed();
         // down sample
         let _ = self.downsampler[0].process::<f64, f64>(
             Some(&self.restored_signal_l),
@@ -548,7 +563,7 @@ impl FmRadioSim {
             Some(&self.restored_signal_r),
             &mut self.tmp_buffer[1],
         );
-        let lap9 = timer_start.elapsed();
+        let lap10 = timer_start.elapsed();
         // interleave
         for (i, lr) in dst_l.iter_mut().zip(dst_r.iter_mut()).enumerate() {
             unsafe {
@@ -563,7 +578,8 @@ composite      : {:?}
 up-sampling    : {:?}
 modulate       : {:?}
 cvt-freq       : {:?}
-bandpass-filter: {:?}
+bandpass-filter1: {:?}
+bandpass-filter2: {:?}
 demodulate     : {:?}
 down-sampling  : {:?}
 restore        : {:?}
@@ -578,6 +594,7 @@ down-sampling  : {:?}",
             lap7 - lap6,
             lap8 - lap7,
             lap9 - lap8,
+            lap10 - lap9,
         );
     }
 }

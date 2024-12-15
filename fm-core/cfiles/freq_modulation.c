@@ -720,7 +720,7 @@ void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   // printf("end down sample\n");
 }
 
-void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
+void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
   // printf("BPF:: Before-Proc\n");
   // print_filter_info(info);
   // prev sigs
@@ -737,10 +737,6 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
   f64x2 d0 = _mm_set1_pd(info->coeff.c3);
   f64x2 d1 = _mm_set1_pd(info->coeff.c4);
-  // printf("bpf coeff: %g,%g,%g,%g,%g\n",info->coeff.c0,info->coeff.c1,info->coeff.c2,info->coeff.c3,info->coeff.c4);
-  // ptr_print(input,dst);
-  // printf("bpf-input-crc-before: %lu\n",crc32((char*) input, buf_len * 8));
-  // fflush(stdout);
   for (usize i = 0; i < buf_len; i += 4) {
     #ifndef BPF_BYPASS
     f64x2 sig_lo = _mm_load_pd(input + i);
@@ -781,19 +777,82 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
     #else
       dst[i >> 2] = input[i];
     #endif
-    // dst[i>>2] = _mm_cvtsd_f64(sig_lo);
   }
-  // usize dst_len = buf_len /4;
-  // printf("================\n[..., %g, %g, %g, %g,%g, %g, %g, %g]\n================\n", dst[dst_len-8],dst[dst_len-7],dst[dst_len-6],dst[dst_len-5] ,dst[buf_len-4], dst[buf_len-3], dst[buf_len-2], dst[buf_len-1]);
-  // printf("bpf-input-crc-after: %lu\n",crc32((char*) input, buf_len * 8));
-  // printf("bpf-dst-crc: %lu\n",crc32((char*) dst, buf_len * 2));
-  // fflush(stdout);
   _mm_store_pd(info->prev_sig, prev_sig);
   _mm_store_pd(info->prev_prev_sig, prev_prev_sig);
   _mm_store_pd(info->prev_out, prev_out);
   _mm_store_pd(info->prev_prev_out, prev_prev_out);
   _mm_store_pd(info->stage, stage_lo);
   _mm_store_pd(info->stage + 2, stage_hi);
-  // printf("BPF:: After-Proc\n");
+}
+
+void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
+  // printf("BPF:: Before-Proc\n");
   // print_filter_info(info);
+  // prev sigs
+  f64x2 prev_sig = _mm_load_pd(info->prev_sig);
+  f64x2 prev_prev_sig = _mm_load_pd(info->prev_prev_sig);
+  f64x2 prev_out = _mm_load_pd(info->prev_out);
+  f64x2 prev_prev_out = _mm_load_pd(info->prev_prev_out);
+  //
+  f64x2 stage_lo = _mm_load_pd(info->stage);
+  f64x2 stage_hi = _mm_load_pd(info->stage + 2);
+  // filter coeffs
+  f64x2 c0 = _mm_set1_pd(info->coeff.c0);
+  // f64x2 c1 = _mm_set1_pd(info->coeff.c1);
+  // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
+  f64x2 d0 = _mm_set1_pd(info->coeff.c3);
+  f64x2 d1 = _mm_set1_pd(info->coeff.c4);
+  for (usize i = 0; i < buf_len; i += 4) {
+    #ifndef BPF_BYPASS
+    f64x2 sig_lo = _mm_load_pd(input + i);
+    f64x2 sig_hi = _mm_load_pd(input + i + 2);
+    //
+    f64x2 s0 = _mm_shuffle_pd(stage_lo, sig_lo, 0b00); // 0' 0
+    f64x2 s1 = _mm_shuffle_pd(stage_lo, sig_lo, 0b11); // 1' 1
+    f64x2 s2 = _mm_shuffle_pd(stage_hi, sig_hi, 0b00); // 2' 2
+    f64x2 s3 = _mm_shuffle_pd(stage_hi, sig_hi, 0b11); // 3' 3
+    // filter process
+    f64x2 v0 = _mm_mul_pd(prev_prev_out, d1);
+    f64x2 w0 = _mm_fnmsub_pd(prev_out, d0, v0);
+    f64x2 x0 = _mm_sub_pd(s0, prev_prev_sig);
+    f64x2 y0 = _mm_fmadd_pd(c0, x0, w0);
+    // for s1
+    f64x2 v1 = _mm_mul_pd(prev_out, d1);
+    f64x2 w1 = _mm_fnmsub_pd(y0, d0, v1);
+    f64x2 x1 = _mm_sub_pd(s1, prev_sig);
+    f64x2 y1 = _mm_fmadd_pd(c0, x1, w1);
+    // for s2
+    f64x2 v2 = _mm_mul_pd(y0, d1);
+    f64x2 w2 = _mm_fnmsub_pd(y1, d0, v2);
+    f64x2 x2 = _mm_sub_pd(s2, s0);
+    f64x2 y2 = _mm_fmadd_pd(c0, x2, w2);
+    // for s3
+    f64x2 v3 = _mm_mul_pd(y1, d1);
+    f64x2 w3 = _mm_fnmsub_pd(y2, d0, v3);
+    f64x2 x3 = _mm_sub_pd(s3, s0);
+    f64x2 y3 = _mm_fmadd_pd(c0, x3, w3);
+    // set next stage
+    stage_lo = _mm_shuffle_pd(y0, y1, 0b11); // 0' 1'
+    stage_hi = _mm_shuffle_pd(y2, y3, 0b11); // 2' 3'
+    prev_out = y3;
+    prev_prev_out = y2;
+    prev_sig = s3;
+    prev_prev_sig = s2;
+    f64x2 out_lo = _mm_shuffle_pd(y0, y1, 0b00); // 0' 1'
+    f64x2 out_hi = _mm_shuffle_pd(y2, y3, 0b00); // 2' 3'
+    _mm_store_pd(dst + i, out_lo);
+    _mm_store_pd(dst + i + 2, out_hi);
+    // dst[i >> 2] = 2. * _mm_cvtsd_f64(y3);
+    #else
+    _mm_store_pd(dst + i, input);
+    _mm_store_pd(dst + i + 2, input);
+    #endif
+  }
+  _mm_store_pd(info->prev_sig, prev_sig);
+  _mm_store_pd(info->prev_prev_sig, prev_prev_sig);
+  _mm_store_pd(info->prev_out, prev_out);
+  _mm_store_pd(info->prev_prev_out, prev_prev_out);
+  _mm_store_pd(info->stage, stage_lo);
+  _mm_store_pd(info->stage + 2, stage_hi);
 }

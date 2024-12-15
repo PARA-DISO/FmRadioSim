@@ -97,7 +97,7 @@ pub struct Modulator {
     integral: [f64; 2], // int_{0}^{t} x(\tau) d\tau ( 符号拡張)
     // t: f64,        // 時刻t
     t: [f64; 4], // 時刻t
-    prev_sig: [f64;8],
+    prev_sig: [f64; 8],
     sample_period: f64,
     carrier_freq: f64,
     modulation_index: f64,
@@ -218,6 +218,16 @@ impl BandPassFilter {
         }
     }
     pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {
+        unsafe {
+            crate::filtering_with_resample(
+                dst.as_mut_ptr(),
+                input.as_ptr(),
+                self as *mut Self,
+                input.len() as u64,
+            )
+        }
+    }
+    pub fn process_no_resample(&mut self, input: &[f64], dst: &mut [f64]) {
         unsafe {
             crate::filtering(
                 dst.as_mut_ptr(),

@@ -86,3 +86,4 @@ typedef struct {
 void upsample(f64* dst, f64* input, ResamplerInfo* info);
 void downsample(f64* dst, f64* input, ResamplerInfo* info);
 void filtering(f64 dst[], const f64 input[], FilteringInfo* info,u64 buf_len);
+void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len);
