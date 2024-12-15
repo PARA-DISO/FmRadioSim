@@ -21,18 +21,18 @@ const AUDIO_SAMPLE_RATE: usize = 44_100;
 const SIGNAL_FREQ: f64 = 440f64;
 // const SIGNAL_FREQ: f64 = 39_000.;
 // const CARRIER_FREQ: f64 = 84_700_000f64;
-const CARRIER_FREQ: f64 = 84_700_000f64;
-// const CARRIER_FREQ: f64 = 79_500_000f64;
+// const CARRIER_FREQ: f64 = 80_000_000f64;
+const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 100;
-const ENABLE_PARALLEL: bool = false;
+const RENDER_MAX: usize = 1000;
+const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
-const FIXED_RENDERING_DURATION: u64 = 5; // 1ms1
+const FIXED_RENDERING_DURATION: u64 = 100; // 1ms1
 const ENABLE_FIXED_TIME_RENDER: bool = true;
 const FRAME_TIME: f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
-pub const GRAPH_LINE_COLOR: RGBColor = RGBColor(60,179,113);
+pub const GRAPH_LINE_COLOR: RGBColor = RGBColor(60, 179, 113);
 fn main() {
     State::run(Settings {
         antialiasing: true,
@@ -162,50 +162,48 @@ impl MyChart {
         if self.continue_flag && self.render_times < RENDER_MAX {
             // 信号の作成
             if !self.disable_audio_in {
-              for i in 0..self.input_signal[0].len() {
-                self.input_signal[0][i] = (self.t as f32
-                    * 2.
-                    * std::f32::consts::PI
-                    * SIGNAL_FREQ as f32)
-                    .sin()
-                    * A as f32;
-                self.input_signal[1][i] = (self.t as f32
-                    * 2.
-                    * std::f32::consts::PI
-                    * SIGNAL_FREQ as f32
-                    * 2.)
-                    .sin()
-                    * A as f32;
-                self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
+                for i in 0..self.input_signal[0].len() {
+                    self.input_signal[0][i] = (self.t as f32
+                        * 2.
+                        * std::f32::consts::PI
+                        * SIGNAL_FREQ as f32)
+                        .sin()
+                        * A as f32;
+                    self.input_signal[1][i] = (self.t as f32
+                        * 2.
+                        * std::f32::consts::PI
+                        * SIGNAL_FREQ as f32
+                        * 2.)
+                        .sin()
+                        * A as f32;
+                    self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
+                }
             }
-            }
-           
+
             // println!("start processing");
             // up-sample
             println!("===============Start=================");
             let timer = Instant::now();
             if ENABLE_PARALLEL {
-             
-            self.fm_radio_sim.process(
-              &self.input_signal[0],
-              &self.input_signal[1],
-              &mut self.output_signal_l,
-              &mut self.output_signal_r,
-            );
+                self.fm_radio_sim.process(
+                    &self.input_signal[0],
+                    &self.input_signal[1],
+                    &mut self.output_signal_l,
+                    &mut self.output_signal_r,
+                );
             } else {
-              self.fm_radio_sim.process_serial(
-                &self.input_signal[0],
-                &self.input_signal[1],
-                &mut self.output_signal_l,
-                &mut self.output_signal_r,
-              );
+                self.fm_radio_sim.process_serial(
+                    &self.input_signal[0],
+                    &self.input_signal[1],
+                    &mut self.output_signal_l,
+                    &mut self.output_signal_r,
+                );
             }
-            
-            
+
             let end_time = timer.elapsed();
             println!("Elapsed Time: {:?}", end_time);
             // println!("===============END=================");
-            
+
             // println!("  - Up-Sample: {:?}", lap0);
             // println!("  - Composite: {:?}", lap1 - lap0);
             // println!("  - Up-Sample: {:?}", lap2 - lap1);
@@ -275,32 +273,56 @@ impl Chart<Message> for MyChart {
                         .collect::<Vec<_>>(),
                     AUDIO_SAMPLE_RATE,
                 ),
-                // 2 => draw_chart(
-                //   builder,
-                //   labels[i],
-                //   self.fm_radio_sim.get_composite().iter().take(2048).copied().collect::<Vec<f64>>().as_slice(),
-                //   FmRadioSim::COMPOSITE_SAMPLE_RATE
-                // ),
-                // 3 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim.get_modulate().iter().take(2048).copied().collect::<Vec<f64>>().as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE,
-                // ),
-                // 4 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim.get_intermediate().iter().take(2048).copied().collect::<Vec<f64>>().as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                // ),
-                // 5 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim.get_demodulate().iter().take(2048).copied().collect::<Vec<f64>>().as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                // ),
+                2 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_composite()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::COMPOSITE_SAMPLE_RATE,
+                ),
+                3 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_modulate()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE,
+                ),
+                4 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_intermediate()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                ),
+                5 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_demodulate()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                ),
                 6 => draw_chart(
                     builder,
                     labels[i],
@@ -321,24 +343,35 @@ impl Chart<Message> for MyChart {
                         .collect::<Vec<_>>(),
                     AUDIO_SAMPLE_RATE,
                 ),
-                // 8 => draw_spectrum(
-                //   builder,
-                //   labels[i],
-                //   self.fm_radio_sim.get_intermediate(),
-                //   FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                //   FrequencyLimit::All,
-                // ),
-                // 9 => draw_spectrum(
-                //   builder,
-                //   labels[i],
-                //   self.fm_radio_sim.get_demodulate(),
-                //   FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                //   FrequencyLimit::Max(100_000.),
-                // ),
-                // 10 => draw_chart(builder, labels[i], self.fm_radio_sim.get_down_sampling(), FmRadioSim::COMPOSITE_SAMPLE_RATE),
-                // 11 => draw_spectrum(builder, labels[i], self.fm_radio_sim.get_down_sampling(),  FmRadioSim::COMPOSITE_SAMPLE_RATE, FrequencyLimit::All),
+                8 => draw_spectrum(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_intermediate(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                    FrequencyLimit::All,
+                ),
+                9 => draw_spectrum(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_demodulate(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                    FrequencyLimit::Max(100_000.),
+                ),
+                10 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_down_sampling(),
+                    FmRadioSim::COMPOSITE_SAMPLE_RATE,
+                ),
+                11 => draw_spectrum(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim.get_down_sampling(),
+                    FmRadioSim::COMPOSITE_SAMPLE_RATE,
+                    FrequencyLimit::All,
+                ),
                 _ => {}
             }
         }
@@ -383,7 +416,11 @@ fn draw_chart<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            if ENABLE_PARALLEL {&GRAPH_LINE_COLOR} else{&RED},
+            if ENABLE_PARALLEL {
+                &GRAPH_LINE_COLOR
+            } else {
+                &RED
+            },
         ))
         .unwrap();
 }
@@ -423,7 +460,10 @@ fn draw_spectrum<DB: DrawingBackend>(
         )
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(0f32..limit.maybe_max().unwrap_or(sample_rate as f32 / 2f32), 0f32..1f32)
+        .build_cartesian_2d(
+            0f32..limit.maybe_max().unwrap_or(sample_rate as f32 / 2f32),
+            0f32..1f32,
+        )
         .unwrap();
 
     chart
@@ -444,7 +484,11 @@ fn draw_spectrum<DB: DrawingBackend>(
             // (-50..=50)
             //     .map(|x| x as f32 / 50.0)
             //     .map(|x| (x, x.powf(power as f32))),
-            if ENABLE_PARALLEL {&GRAPH_LINE_COLOR} else{&RED},
+            if ENABLE_PARALLEL {
+                &GRAPH_LINE_COLOR
+            } else {
+                &RED
+            },
         ))
         .unwrap();
 }
