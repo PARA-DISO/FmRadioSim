@@ -82,9 +82,9 @@ impl CvtIntermediateFreq {
             crate::convert_intermediate_freq(
                 dst.as_mut_ptr(),
                 input.as_ptr(),
-                self.sample_periodic,
-                self.fc1,
-                self.fc2,
+                // self.sample_periodic,
+                // self.fc1,
+                // self.fc2,
                 &raw mut self.info,
                 input.len(),
             );

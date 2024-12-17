@@ -20,5 +20,5 @@ macro_rules! exec_flag {
 }
 
 pub mod float {
-  pub const FLUSH_TO_ZERO:u32 = 1 << 15;
+    pub const FLUSH_TO_ZERO: u32 = 1 << 15;
 }

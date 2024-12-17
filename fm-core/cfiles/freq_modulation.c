@@ -342,8 +342,9 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
 }
 #define FIRST_POS 1
 void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
-                               const f64 sample_period, f64 const fc,
-                               f64 const fi, CnvFiInfos *const info,
+                              //  const f64 sample_period, f64 const fc,
+                              //  f64 const fi,
+                               CnvFiInfos *const info,
                                const usize buf_len) {
 
 #if ENABLE_UPSAMPLING
