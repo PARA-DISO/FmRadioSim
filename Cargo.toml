@@ -7,8 +7,8 @@ crate-type = ["cdylib"]
 [build]
 rustflags = ["-Z", "threads=8","-C", "target-cpu=native"]
 [profile.release]
-# lto = "fat"
-# codegen-units = 1
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 [workspace]
 member=["fm-core"]

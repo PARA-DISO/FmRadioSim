@@ -54,6 +54,7 @@ extern "C" {
         filter_coeff: *mut modulator::BandPassFilter,
         buf_len: u64,
     );
+    fn set_csr(flag:u32);
 }
 
 pub struct FmRadioSim {
@@ -64,7 +65,7 @@ pub struct FmRadioSim {
     composite: composite::CompositeSignal,
     restore: composite::RestoreSignal,
     modulator: Shareable<modulator::Modulator>,
-    demodulator: modulator::DeModulator,
+    demodulator: Shareable<modulator::DeModulator>,
     freq_converter: Shareable<modulator::CvtIntermediateFreq>,
 
     bandpass_filter1: Shareable<modulator::BandPassFilter>,
@@ -85,8 +86,8 @@ pub struct FmRadioSim {
     intermediate_signal1: PipeLineBuffer, // 192MHz (inner 384MHz)
     intermediate_signal2: PipeLineBuffer, // 48MHz?
     intermediate_signal3: PipeLineBuffer, // 48MHz
-    // demodulate_signal: PipeLineBuffer, // 48MHz
-    demodulate_signal: Vec<f64>,
+    demodulate_signal: PipeLineBuffer, // 48MHz
+    // demodulate_signal: Vec<f64>,
     post_down_sample: Vec<f64>, // 125kHz
     restored_signal_l: Vec<f64>,
     restored_signal_r: Vec<f64>, // 125kHz
@@ -193,12 +194,12 @@ impl FmRadioSim {
                 fm_sample_rate as f64,
                 Self::INTERMEDIATE_FREQ,
             )),
-            demodulator: modulator::DeModulator::from(
+            demodulator: sharable!(modulator::DeModulator::from(
                 Self::INTERMEDIATE_FREQ,
                 intermediate_fs as f64,
                 // 880.
                 Self::SIGNAL_MAX_FREQ,
-            ),
+            )),
             // resampler
             upsampler,
             downsampler,
@@ -225,13 +226,13 @@ impl FmRadioSim {
             // demodulate_signal: generate_pipline_buffer(
             //     intermediate_buffer_size,
             // ),
-            demodulate_signal: vec![0.; dbg!(intermediate_buffer_size)],
+            demodulate_signal: generate_pipline_buffer(intermediate_buffer_size),
             post_down_sample: vec![0.; composite_buffer_size],
             restored_signal_l: vec![0.; composite_buffer_size],
             restored_signal_r: vec![0.; composite_buffer_size],
             //
-            read_state: true,
-            barrier: Arc::new(Barrier::new(5)),
+            read_state: false,
+            barrier: Arc::new(Barrier::new(6)),
             // barrier: Arc::new(Barrier::new(3)),
             is_init: false,
         }
@@ -255,7 +256,11 @@ impl FmRadioSim {
         }
     }
     pub fn get_demodulate(&self) -> &[f64] {
-        &self.demodulate_signal
+      unsafe { 
+        let tmp = self.demodulate_signal[self.read_state as usize].lock().unwrap();
+        std::slice::from_raw_parts(tmp.as_ptr(), tmp.len())
+      }
+        
     }
     pub fn get_composite(&self) -> &[f64] {
         &self.composite_signal
@@ -275,25 +280,30 @@ impl FmRadioSim {
         let listener1 = Arc::clone(&self.barrier);
         let listener2 = Arc::clone(&self.barrier);
         let listener3 = Arc::clone(&self.barrier);
+        let listener4 = Arc::clone(&self.barrier);
         // Modulation Process
         {
             let modulator = Arc::clone(&self.modulator);
             let up_sample_signal = Arc::clone(&self.up_sampled_signal);
             let modulate_signal = Arc::clone(&self.modulate_signal);
             let _ = thread::spawn(move || {
+              unsafe {set_csr(crate::utils::float::FLUSH_TO_ZERO);}
                 let mut state = false;
                 let up_sample_signal = Arc::clone(&up_sample_signal);
                 let modulate_signal = Arc::clone(&modulate_signal);
 
                 loop {
                     listener0.wait();
+                    let start = Instant::now();
                     modulator.lock().unwrap().process(
                         &up_sample_signal[(!state) as usize].lock().unwrap(),
                         &mut modulate_signal[state as usize].lock().unwrap(),
                     );
                     // println!("hoge");
+                    let end = start.elapsed();
                     listener0.wait();
                     state ^= true;
+                    println!("Modulate: {:?}",end);
                 }
             });
         }
@@ -303,20 +313,24 @@ impl FmRadioSim {
             let modulate_signal = Arc::clone(&self.modulate_signal);
             let freq_converter = Arc::clone(&self.freq_converter);
             let _ = thread::spawn(move || {
+              unsafe {set_csr(crate::utils::float::FLUSH_TO_ZERO);}
                 let mut state = false;
                 let intermediate_signal = Arc::clone(&intermediate_signal);
                 let modulate_signal = Arc::clone(&modulate_signal);
 
                 loop {
                     listener1.wait();
+                    let start = Instant::now();
                     freq_converter.lock().unwrap().process(
                         &modulate_signal[(!state) as usize].lock().unwrap(),
                         &mut intermediate_signal[state as usize]
                             .lock()
                             .unwrap(),
                     );
+                    let end = start.elapsed();
                     listener1.wait();
                     state ^= true;
+                    println!("Cvt-Freq: {:?}",end);
                     // println!("fuga");
                 }
             });
@@ -328,6 +342,7 @@ impl FmRadioSim {
             let intermediate_signal_out =
                 Arc::clone(&self.intermediate_signal2);
             let _ = thread::spawn(move || {
+              unsafe {set_csr(crate::utils::float::FLUSH_TO_ZERO);}
                 let mut state = false;
                 let intermediate_signal = Arc::clone(&intermediate_signal_in);
                 let intermediate_signal_out =
@@ -335,14 +350,17 @@ impl FmRadioSim {
 
                 loop {
                     listener2.wait();
+                    let start = Instant::now();
                     bandpass_filter.lock().unwrap().process_no_resample(
                         &intermediate_signal[(!state) as usize].lock().unwrap(),
                         &mut intermediate_signal_out[state as usize]
                             .lock()
                             .unwrap(),
                     );
+                    let end = start.elapsed();
                     listener2.wait();
                     state ^= true;
+                    println!("BPF1: {:?}",end);
                 }
             });
         }
@@ -352,6 +370,7 @@ impl FmRadioSim {
           let intermediate_signal_out =
               Arc::clone(&self.intermediate_signal3);
           let _ = thread::spawn(move || {
+            unsafe {set_csr(crate::utils::float::FLUSH_TO_ZERO);}
               let mut state = false;
               let intermediate_signal = Arc::clone(&intermediate_signal_in);
               let intermediate_signal_out =
@@ -359,14 +378,45 @@ impl FmRadioSim {
 
               loop {
                   listener3.wait();
+                  let start = Instant::now();
                   bandpass_filter.lock().unwrap().process(
                       &intermediate_signal[(!state) as usize].lock().unwrap(),
                       &mut intermediate_signal_out[state as usize]
                           .lock()
                           .unwrap(),
                   );
+                  let end = start.elapsed();
                   listener3.wait();
                   state ^= true;
+                  println!("BPF2 : {:?}",end);
+              }
+          });
+      }
+      {
+          let demodulation = Arc::clone(&self.demodulator);
+          let intermediate_signal = Arc::clone(&self.intermediate_signal3);
+          let demodulate_signal = 
+              Arc::clone(&self.demodulate_signal);
+          let _ = thread::spawn(move || {
+            unsafe {set_csr(crate::utils::float::FLUSH_TO_ZERO);}
+              let mut state = false;
+              let intermediate_signal = Arc::clone(&intermediate_signal);
+              let demodulate_signal =
+                  Arc::clone(&demodulate_signal);
+
+              loop {
+                  listener4.wait();
+                  let start = Instant::now();
+                  demodulation.lock().unwrap().process(
+                      &intermediate_signal[(!state) as usize].lock().unwrap(),
+                      &mut demodulate_signal[state as usize]
+                          .lock()
+                          .unwrap(),
+                  );
+                  let end = start.elapsed();
+                  listener4.wait();
+                  state ^= true;
+                  println!("De-Modulate: {:?}",end);
               }
           });
       }
@@ -406,7 +456,7 @@ impl FmRadioSim {
         //
         unsafe {
             upsample(
-                self.up_sampled_signal[(!self.read_state) as usize]
+                self.up_sampled_signal[(self.read_state) as usize]
                     .lock()
                     .unwrap()
                     .deref_mut()
@@ -418,19 +468,19 @@ impl FmRadioSim {
             );
         }
 
-        self.demodulator.process(
-            // &intermediate_signal_out,
-            &self.intermediate_signal3[self.read_state as usize]
-                .lock()
-                .unwrap(),
-            &mut self.demodulate_signal,
-        );
+        // self.demodulator.process(
+        //     // &intermediate_signal_out,
+        //     &self.intermediate_signal3[self.read_state as usize]
+        //         .lock()
+        //         .unwrap(),
+        //     &mut self.demodulate_signal,
+        // );
         // println!("check point2");
         //
         unsafe {
             downsample(
                 self.post_down_sample.as_mut_ptr(),
-                self.demodulate_signal.as_ptr(),
+                self.demodulate_signal[(!self.read_state) as usize].lock().unwrap().as_ptr(),
                 &raw mut self.downsampler_for_radio_waves,
             );
         }
@@ -533,9 +583,9 @@ impl FmRadioSim {
         );
         // de-modulate
         let lap6 = timer_start.elapsed();
-        self.demodulator.process(
+        self.demodulator.lock().unwrap().process(
             &self.intermediate_signal3[0].lock().unwrap(),
-            &mut self.demodulate_signal,
+            &mut self.demodulate_signal[0].lock().unwrap(),
         );
         // println!("check point2");
         //
@@ -543,7 +593,7 @@ impl FmRadioSim {
         unsafe {
             downsample(
                 self.post_down_sample.as_mut_ptr(),
-                self.demodulate_signal.as_ptr(),
+                self.demodulate_signal[0].lock().unwrap().as_ptr(),
                 &raw mut self.downsampler_for_radio_waves,
             );
         }

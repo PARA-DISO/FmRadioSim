@@ -18,3 +18,7 @@ macro_rules! exec_flag {
         std::sync::Arc::new((Mutex::new(true), std::sync::Condvar::new()))
     };
 }
+
+pub mod float {
+  pub const FLUSH_TO_ZERO:u32 = 1 << 15;
+}

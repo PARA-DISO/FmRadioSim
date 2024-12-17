@@ -83,7 +83,9 @@ typedef struct {
   usize multiplier;
   usize input_len;
 } ResamplerInfo;
-void upsample(f64* dst, f64* input, ResamplerInfo* info);
-void downsample(f64* dst, f64* input, ResamplerInfo* info);
-void filtering(f64 dst[], const f64 input[], FilteringInfo* info,u64 buf_len);
-void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len);
+void upsample(f64* restrict dst, f64* input, ResamplerInfo* restrict info);
+void downsample(f64* restrict dst, f64* input, ResamplerInfo* restrict info);
+void filtering(f64 dst[], const f64 input[], FilteringInfo* restrict info,u64 buf_len);
+void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo* restrict info, usize buf_len);
+
+void set_csr(u32 flag);

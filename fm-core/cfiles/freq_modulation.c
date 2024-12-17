@@ -159,33 +159,33 @@ unsigned int crc32(char *p, int len)
 	return crc ^ 0xFFFFFFFF;
 }
 //----------------------------
-inline f64 fast_lpf(f64 sig, f64 coeff, f64 *prev) {
-  f64 s = *prev + coeff * (sig - *prev);
-  *prev = s;
-  return s;
-}
+// inline f64 fast_lpf(f64 sig, f64 coeff, f64 *prev) {
+//   f64 s = *prev + coeff * (sig - *prev);
+//   *prev = s;
+//   return s;
+// }
 
 // (結果が完全に0になる原因)
-inline f64 lpf(f64 sig, FilterCoeffs *coeff, FilterInfo info) {
-  const f64 in1 = info[0];
-  const f64 in2 = info[1];
-  const f64 out1 = info[2];
-  const f64 out2 = info[3];
-  const f64 buf = coeff->c0 * sig + coeff->c1 * in1 + coeff->c2 * in2 -
-                  coeff->c3 * out1 - coeff->c4 * out2;
-  info[0] = sig;
-  info[1] = in1;
-  info[2] = buf;
-  info[3] = out1;
-  return buf;
-}
-inline void differential(f64 *dr, f64 *di, const f64 r, const f64 i, f64 *prev,
-                         const f64 sample_period) {
-  *dr = (r - prev[0]) / sample_period;
-  *di = (i - prev[1]) / sample_period;
-  prev[0] = r;
-  prev[1] = i;
-}
+// inline f64 lpf(f64 sig, FilterCoeffs *coeff, FilterInfo info) {
+//   const f64 in1 = info[0];
+//   const f64 in2 = info[1];
+//   const f64 out1 = info[2];
+//   const f64 out2 = info[3];
+//   const f64 buf = coeff->c0 * sig + coeff->c1 * in1 + coeff->c2 * in2 -
+//                   coeff->c3 * out1 - coeff->c4 * out2;
+//   info[0] = sig;
+//   info[1] = in1;
+//   info[2] = buf;
+//   info[3] = out1;
+//   return buf;
+// }
+// inline void differential(f64 *dr, f64 *di, const f64 r, const f64 i, f64 *prev,
+//                          const f64 sample_period) {
+//   *dr = (r - prev[0]) / sample_period;
+//   *di = (i - prev[1]) / sample_period;
+//   prev[0] = r;
+//   prev[1] = i;
+// }
 
 void fm_modulate(f64 output_signal[], const f64 input_signal[],
                  const usize buf_len, ModulationInfo *info) {
@@ -239,6 +239,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
   f64x4 prev_inter_sig = _mm256_load_pd(info->prev_inter_sig);
   #endif
   // _mm256_print_pd(coeff);
+  #pragma unroll
   for (usize i = 0; i < buf_len; i += 8) {
     // integral
      f64x4 s1 = _mm256_load_pd(input_signal + i);            // 0 1 2 3
@@ -474,6 +475,7 @@ void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
   // ptr_print(input_signal,output_signal);
   f64x4 angle = _mm256_load_pd(info->angle);
   f64x4 full_delta_angle = _mm256_set1_pd(info->delta_angle * 4);
+  #pragma unroll
   for (usize i = 0, j = 0; i < buf_len; i += 8) {
     f64x4 cos_value1 = _mm256_cos_pd(angle);
     angle = _mm256_add_pd(angle, full_delta_angle);
@@ -565,6 +567,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
   // //
   // printf("prev sig | prev prev sig @ demodulate\n");
   f64x4 d_coeff = _mm256_set1_pd(1 / sample_period);
+  #pragma unroll
   for (usize i = 0; i < buf_len; i += 4) {
     // Removing Carrier
     f64x4 sin_val = _mm256_sin_pd(angle);
@@ -676,13 +679,14 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
 #endif
 }
 
-void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
+void upsample(f64* restrict dst, f64* restrict input, ResamplerInfo* restrict info) {
   usize len = info->input_len;
   f64 prev = info->prev;
   usize multiplier = info->multiplier;
   f64x4 offset = _mm256_set1_pd(4);
   f64x4 m = _mm256_set1_pd(1./multiplier);
   // printf("len: %ld / multiplier: %ld\n", len,multiplier);
+  #pragma unroll
   for (int i = 0; i < len; ++i) {
     f64x4 a = _mm256_set1_pd(prev);
     f64x4 b = _mm256_set1_pd(input[i]);
@@ -701,7 +705,7 @@ void upsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   info->prev = prev;
 }
 
-void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
+void downsample(f64* restrict dst, f64* restrict input, ResamplerInfo* restrict info) {
   usize len = info->input_len;
   // print_resampler_info(info);
   // fflush(stdout);
@@ -710,6 +714,7 @@ void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   
   usize multiplier = info->multiplier;
   // printf("len: %lld / multiplier: %lld\n", len,multiplier);
+  #pragma unroll
   for (usize i = 0, j = 0; i < len; i += multiplier, ++j) {
     dst[j] = input[i];
   }
@@ -720,7 +725,7 @@ void downsample(f64 *dst, f64 *input, ResamplerInfo *info) {
   // printf("end down sample\n");
 }
 
-void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
+void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo * restrict info, usize buf_len) {
   // printf("BPF:: Before-Proc\n");
   // print_filter_info(info);
   // prev sigs
@@ -737,6 +742,7 @@ void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, 
   // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
   f64x2 d0 = _mm_set1_pd(info->coeff.c3);
   f64x2 d1 = _mm_set1_pd(info->coeff.c4);
+  #pragma unroll
   for (usize i = 0; i < buf_len; i += 4) {
     #ifndef BPF_BYPASS
     f64x2 sig_lo = _mm_load_pd(input + i);
@@ -786,7 +792,7 @@ void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo *info, 
   _mm_store_pd(info->stage + 2, stage_hi);
 }
 
-void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len) {
+void filtering(f64 dst[], const f64 input[], FilteringInfo * restrict info, usize buf_len) {
   // printf("BPF:: Before-Proc\n");
   // print_filter_info(info);
   // prev sigs
@@ -803,6 +809,7 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   // f64x2 c2 = _mm_set1_pd(info->coeff.c2);
   f64x2 d0 = _mm_set1_pd(info->coeff.c3);
   f64x2 d1 = _mm_set1_pd(info->coeff.c4);
+  #pragma unroll
   for (usize i = 0; i < buf_len; i += 4) {
     #ifndef BPF_BYPASS
     f64x2 sig_lo = _mm_load_pd(input + i);
@@ -855,4 +862,9 @@ void filtering(f64 dst[], const f64 input[], FilteringInfo *info, usize buf_len)
   _mm_store_pd(info->prev_prev_out, prev_prev_out);
   _mm_store_pd(info->stage, stage_lo);
   _mm_store_pd(info->stage + 2, stage_hi);
+}
+
+void set_csr(u32 flag) {
+  u32 csr = _mm_getcsr();
+  _mm_setcsr(csr | flag);
 }

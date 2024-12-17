@@ -2,13 +2,11 @@
 name = "fm-core"
 version = "0.1.0"
 edition = "2021"
-# [lib]
-# crate-type=["cdylib"]
 [build]
 rustflags = ["-Z","sanitizer=address","-Z", "threads=8","-C", "target-cpu=native"]
 [profile.release]
-# lto = "fat"
-# codegen-units = 1
+lto = "fat"
+codegen-units = 1
 panic = "abort"
 [build-dependencies]
 cc = "1.1.31"
