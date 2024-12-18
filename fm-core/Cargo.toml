@@ -3,7 +3,7 @@ name = "fm-core"
 version = "0.1.0"
 edition = "2021"
 [build]
-rustflags = ["-Z","sanitizer=address","-Z", "threads=8","-C", "target-cpu=native"]
+rustflags = ["-Z", "threads=8","-C", "target-cpu=native"]
 [profile.release]
 lto = "fat"
 codegen-units = 1

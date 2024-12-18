@@ -71,8 +71,8 @@ typedef struct {
   
 } DemodulationInfo;
 // #define TAU 2.0 * M_PI
-void fm_modulate(f64 output_signal[], const f64 input_signal[], usize const buf_len, ModulationInfo* info);
-void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const carrier_freq,DemodulationInfo* const info, const usize buf_len);
+void fm_modulate(f64* restrict output_signal, const f64* restrict input_signal, usize const buf_len, ModulationInfo* restrict info);
+void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const carrier_freq,DemodulationInfo* restrict const info, const usize buf_len);
 // void convert_intermediate_freq(
 //   f64 output_signal[], const f64 input_signal[],
 //   const f64 sample_period,
@@ -82,7 +82,7 @@ void convert_intermediate_freq(
   f64 output_signal[], const f64 input_signal[],
   // const f64 sample_period,
   // f64 const fc, f64 const fi,
-  CnvFiInfos* const info, const usize buf_len);
+  CnvFiInfos* restrict const info, const usize buf_len);
 typedef struct {
   f64 prev;
   usize multiplier;

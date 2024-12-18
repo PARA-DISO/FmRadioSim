@@ -16,6 +16,9 @@ use std::{
     time::Instant,
 };
 use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer, Shareable};
+
+const ENABLE_MODULE_TIME: bool = false;
+
 #[link(name = "freq_modulation")]
 extern "C" {
     fn fm_modulate(
@@ -277,6 +280,9 @@ impl FmRadioSim {
             println!("threads is already init.");
             return;
         }
+        unsafe {
+            set_csr(crate::utils::float::FLUSH_TO_ZERO);
+        }
         self.is_init = true;
         println!("initialize Threads.");
         // Modules
@@ -301,16 +307,16 @@ impl FmRadioSim {
                 loop {
                     listener0.wait();
                     let start = Instant::now();
-                    modulator.lock().unwrap().process(
-                        &up_sample_signal[(!state) as usize].lock().unwrap(),
-                        &mut modulate_signal[state as usize].lock().unwrap(),
-                    );
+                    unsafe {modulator.lock().unwrap_unchecked().process(
+                        &up_sample_signal[(!state) as usize].lock().unwrap_unchecked(),
+                        &mut modulate_signal[state as usize].lock().unwrap_unchecked(),
+                    );}
                     // println!("hoge");
                     let end = start.elapsed();
                     listener0.wait();
                     state ^= true;
-
-                    println!("Modulate: {:?}", end);
+if ENABLE_MODULE_TIME {
+                    println!("Modulate: {:?}", end);}
                 }
             });
         }
@@ -330,17 +336,18 @@ impl FmRadioSim {
                 loop {
                     listener1.wait();
                     let start = Instant::now();
-                    freq_converter.lock().unwrap().process(
-                        &modulate_signal[(!state) as usize].lock().unwrap(),
+                    unsafe {freq_converter.lock().unwrap_unchecked().process(
+                        &modulate_signal[(!state) as usize].lock().unwrap_unchecked(),
                         &mut intermediate_signal[state as usize]
                             .lock()
-                            .unwrap(),
-                    );
+                            .unwrap_unchecked(),
+                    );}
                     let end = start.elapsed();
                     listener1.wait();
                     state ^= true;
-
-                    println!("Cvt-Freq: {:?}", end);
+                    if ENABLE_MODULE_TIME {
+                        println!("Cvt-Freq: {:?}", end);
+                    }
                     // println!("fuga");
                 }
             });
@@ -363,17 +370,18 @@ impl FmRadioSim {
                 loop {
                     listener2.wait();
                     let start = Instant::now();
-                    bandpass_filter.lock().unwrap().process_no_resample(
-                        &intermediate_signal[(!state) as usize].lock().unwrap(),
+                    unsafe {bandpass_filter.lock().unwrap_unchecked().process_no_resample(
+                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
                         &mut intermediate_signal_out[state as usize]
                             .lock()
-                            .unwrap(),
-                    );
+                            .unwrap_unchecked(),
+                    );}
                     let end = start.elapsed();
                     listener2.wait();
                     state ^= true;
-
-                    println!("BPF1: {:?}", end);
+                    if ENABLE_MODULE_TIME {
+                        println!("BPF1: {:?}", end);
+                    }
                 }
             });
         }
@@ -394,17 +402,18 @@ impl FmRadioSim {
                 loop {
                     listener3.wait();
                     let start = Instant::now();
-                    bandpass_filter.lock().unwrap().process(
-                        &intermediate_signal[(!state) as usize].lock().unwrap(),
+                    unsafe {bandpass_filter.lock().unwrap_unchecked().process(
+                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
                         &mut intermediate_signal_out[state as usize]
                             .lock()
-                            .unwrap(),
-                    );
+                            .unwrap_unchecked(),
+                    );}
                     let end = start.elapsed();
                     listener3.wait();
                     state ^= true;
-
-                    println!("BPF2 : {:?}", end);
+                    if ENABLE_MODULE_TIME {
+                        println!("BPF2 : {:?}", end);
+                    }
                 }
             });
         }
@@ -423,15 +432,16 @@ impl FmRadioSim {
                 loop {
                     listener4.wait();
                     let start = Instant::now();
-                    demodulation.lock().unwrap().process(
-                        &intermediate_signal[(!state) as usize].lock().unwrap(),
-                        &mut demodulate_signal[state as usize].lock().unwrap(),
-                    );
+                    unsafe {demodulation.lock().unwrap_unchecked().process(
+                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
+                        &mut demodulate_signal[state as usize].lock().unwrap_unchecked(),
+                    );}
                     let end = start.elapsed();
                     listener4.wait();
                     state ^= true;
-                    
-                    println!("De-Modulate: {:?}", end);
+                    if ENABLE_MODULE_TIME {
+                        println!("De-Modulate: {:?}", end);
+                    }
                 }
             });
         }

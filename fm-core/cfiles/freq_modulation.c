@@ -187,8 +187,8 @@ unsigned int crc32(char *p, int len)
 //   prev[1] = i;
 // }
 
-void fm_modulate(f64 output_signal[], const f64 input_signal[],
-                 const usize buf_len, ModulationInfo *info) {
+void fm_modulate(f64* restrict output_signal, const f64* restrict input_signal,
+                 const usize buf_len, ModulationInfo * restrict info) {
 #if TEST_CODE
   f64x4 angle = _mm256_load_pd(info->t);
   f64x4 phi =
@@ -318,10 +318,6 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
     
     f64x4 cos_value1 = _mm256_cos_pd(modulated_angle1);
     f64x4 cos_value2 = _mm256_cos_pd(modulated_angle2);
-    // f64x4 cos_value1 = _mm256_cos_pd(angle);
-    // f64x4 cos_value2 = _mm256_cos_pd(angle2);
-    // _mm256_fprint_pd(test_log,s1_sums);
-    // _mm256_fprint_pd(test_log,s2_sums);
     _mm256_store_pd(output_signal + i, cos_value1);
     _mm256_store_pd(output_signal + i + 4, cos_value2);
     // <for next loop data>
@@ -344,7 +340,7 @@ void fm_modulate(f64 output_signal[], const f64 input_signal[],
 void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
                               //  const f64 sample_period, f64 const fc,
                               //  f64 const fi,
-                               CnvFiInfos *const info,
+                               CnvFiInfos *restrict const info,
                                const usize buf_len) {
 
 #if ENABLE_UPSAMPLING
@@ -497,7 +493,7 @@ void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
 }
 void fm_demodulate(f64 output_signal[], const f64 input_signal[],
                    const f64 sample_period, f64 const fc,
-                   DemodulationInfo *const info, const usize buf_len) {
+                   DemodulationInfo *restrict const info, const usize buf_len) {
 #if DISABLE_SIMD_DEMODULATE
   FilterCoeffs *const coeff = &info->filter_coeff;
   FilterInfo *filter_info = info->filter_info;
@@ -651,7 +647,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
     f64x4 sig_out = _mm256_hsub_pd(ta, tb);
     // _mm256_store_pd(output_signal+i,test_point2);
     _mm256_store_pd(output_signal + i,
-                    _mm256_mul_pd(_mm256_set1_pd(8), sig_out));
+                    _mm256_mul_pd(_mm256_set1_pd(4), sig_out));
     // move value for next loop
     prev_sig_lo = _mm256_permute2f128_pd(o0, o2, 0x20);
     prev_sig_hi = _mm256_permute2f128_pd(o1, o3, 0x20);

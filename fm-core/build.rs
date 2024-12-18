@@ -10,14 +10,9 @@ fn main() {
         .flag("/fp:fast")
         .flag("/favor:AMD64")
         .flag("/GA")
-        .flag("/QIntel-jcc-erratum")
-        .flag("/Qsafe_fp_loads")
+        .flag("/utf-8")
+        // .flag("/TC")
         // .flag("/fp:precise")
         .include("cfiles")
         .compile("freq_modulation");
-    // cc::Build::new()
-    //   .file(fpath2)
-    //   .flag("/arch:AVX2")
-    //   .include("cfiles")
-    //   .compile("resampler");
 }
