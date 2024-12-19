@@ -8,11 +8,15 @@ fn main() {
         .file(fpath1)
         .flag("/arch:AVX2")
         .flag("/fp:fast")
-        .flag("/favor:AMD64")
-        .flag("/GA")
+        .flag("/Ob3")
+        // .flag("/favor:AMD64")
+        .flag("/GS-")
+        // .flag("/GL")
         .flag("/utf-8")
         // .flag("/TC")
-        // .flag("/fp:precise")
+        .flag("/fp:except-")
+        .flag("/vlen=256")
+        .flag("/Zc:tlsGuards-")
         .include("cfiles")
         .compile("freq_modulation");
 }

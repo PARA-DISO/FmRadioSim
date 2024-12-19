@@ -26,6 +26,7 @@ const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 1000;
+// const RENDER_MAX: usize = 10;
 const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
@@ -291,7 +292,7 @@ impl Chart<Message> for MyChart {
                 //     self.fm_radio_sim
                 //         .get_modulate()
                 //         .iter()
-                //         .take(2048)
+                //         .take(1024)
                 //         .copied()
                 //         .collect::<Vec<f64>>()
                 //         .as_slice(),

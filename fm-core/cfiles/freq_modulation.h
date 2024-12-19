@@ -1,9 +1,10 @@
 #pragma once
-#include <immintrin.h>
 #include "rstype.h"
+#include <immintrin.h>
 #define ENABLE_UPSAMPLING 0
 #define TEST_CODE false
 #define DISABLE_SIMD_DEMODULATE 0
+#define SEPARATE_MODULATE_INTEGRAL 1
 typedef uint64_t usize;
 typedef double f64;
 typedef __m256d f64x4;
@@ -59,38 +60,43 @@ typedef struct {
   f64 prev_internal[8];
   // f64 filter_coeff;
   FilterCoeffs filter_coeff;
-  // FilterInfo filter_info[6];
-  // f64 filter_info[8];
-  #if !DISABLE_SIMD_DEMODULATE
+// FilterInfo filter_info[6];
+// f64 filter_info[8];
+#if !DISABLE_SIMD_DEMODULATE
   // f64 filter_coeff;
   f64 filter_info[16];
-  #else
+#else
   // FilterCoeffs filter_coeff;
   FilterInfo filter_info[6];
-  #endif
-  
+#endif
+
 } DemodulationInfo;
 // #define TAU 2.0 * M_PI
-void fm_modulate(f64* restrict output_signal, const f64* restrict input_signal, usize const buf_len, ModulationInfo* restrict info);
-void fm_demodulate(f64 output_signal[], const f64 input_signal[], const f64 sample_period,f64 const carrier_freq,DemodulationInfo* restrict const info, const usize buf_len);
+void fm_modulate(f64 *restrict output_signal, const f64 *restrict input_signal,
+                 usize const buf_len, ModulationInfo *restrict info);
+void fm_demodulate(f64 output_signal[], const f64 input_signal[],
+                   const f64 sample_period, f64 const carrier_freq,
+                   DemodulationInfo *restrict const info, const usize buf_len);
 // void convert_intermediate_freq(
 //   f64 output_signal[], const f64 input_signal[],
 //   const f64 sample_period,
 //   f64 const fc, f64 const fi,
 //   CnvFiInfos* const info, const usize buf_len);
-void convert_intermediate_freq(
-  f64 output_signal[], const f64 input_signal[],
-  // const f64 sample_period,
-  // f64 const fc, f64 const fi,
-  CnvFiInfos* restrict const info, const usize buf_len);
+void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
+                               // const f64 sample_period,
+                               // f64 const fc, f64 const fi,
+                               CnvFiInfos *restrict const info,
+                               const usize buf_len);
 typedef struct {
   f64 prev;
   usize multiplier;
   usize input_len;
 } ResamplerInfo;
-void upsample(f64* restrict dst, f64* input, ResamplerInfo* restrict info);
-void downsample(f64* restrict dst, f64* input, ResamplerInfo* restrict info);
-void filtering(f64 dst[], const f64 input[], FilteringInfo* restrict info,u64 buf_len);
-void filtering_with_resample(f64 dst[], const f64 input[], FilteringInfo* restrict info, usize buf_len);
+void upsample(f64 *restrict dst, f64 *input, ResamplerInfo *restrict info);
+void downsample(f64 *restrict dst, f64 *input, ResamplerInfo *restrict info);
+void filtering(f64 dst[], const f64 input[], FilteringInfo *restrict info,
+               u64 buf_len);
+void filtering_with_resample(f64 dst[], const f64 input[],
+                             FilteringInfo *restrict info, usize buf_len);
 
 void set_csr(u32 flag);
