@@ -18,7 +18,7 @@ use std::{
 use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer, Shareable};
 
 const ENABLE_MODULE_TIME: bool = false;
-
+const ENABLE_END_BARRIER: bool = false;
 #[link(name = "freq_modulation")]
 extern "C" {
     fn fm_modulate(
@@ -307,16 +307,26 @@ impl FmRadioSim {
                 loop {
                     listener0.wait();
                     let start = Instant::now();
-                    unsafe {modulator.lock().unwrap_unchecked().process(
-                        &up_sample_signal[(!state) as usize].lock().unwrap_unchecked(),
-                        &mut modulate_signal[state as usize].lock().unwrap_unchecked(),
-                    );}
+                    unsafe {
+                        modulator.lock().unwrap_unchecked().process(
+                            &up_sample_signal[(!state) as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                            &mut modulate_signal[state as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                        );
+                    }
                     // println!("hoge");
                     let end = start.elapsed();
-                    listener0.wait();
+                    if ENABLE_END_BARRIER {
+                        listener0.wait();
+                    }
+
                     state ^= true;
-if ENABLE_MODULE_TIME {
-                    println!("Modulate: {:?}", end);}
+                    if ENABLE_MODULE_TIME {
+                        println!("Modulate: {:?}", end);
+                    }
                 }
             });
         }
@@ -336,14 +346,20 @@ if ENABLE_MODULE_TIME {
                 loop {
                     listener1.wait();
                     let start = Instant::now();
-                    unsafe {freq_converter.lock().unwrap_unchecked().process(
-                        &modulate_signal[(!state) as usize].lock().unwrap_unchecked(),
-                        &mut intermediate_signal[state as usize]
-                            .lock()
-                            .unwrap_unchecked(),
-                    );}
+                    unsafe {
+                        freq_converter.lock().unwrap_unchecked().process(
+                            &modulate_signal[(!state) as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                            &mut intermediate_signal[state as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                        );
+                    }
                     let end = start.elapsed();
-                    listener1.wait();
+                    if ENABLE_END_BARRIER {
+                        listener1.wait();
+                    }
                     state ^= true;
                     if ENABLE_MODULE_TIME {
                         println!("Cvt-Freq: {:?}", end);
@@ -370,14 +386,23 @@ if ENABLE_MODULE_TIME {
                 loop {
                     listener2.wait();
                     let start = Instant::now();
-                    unsafe {bandpass_filter.lock().unwrap_unchecked().process_no_resample(
-                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
-                        &mut intermediate_signal_out[state as usize]
+                    unsafe {
+                        bandpass_filter
                             .lock()
-                            .unwrap_unchecked(),
-                    );}
+                            .unwrap_unchecked()
+                            .process_no_resample(
+                                &intermediate_signal[(!state) as usize]
+                                    .lock()
+                                    .unwrap_unchecked(),
+                                &mut intermediate_signal_out[state as usize]
+                                    .lock()
+                                    .unwrap_unchecked(),
+                            );
+                    }
                     let end = start.elapsed();
-                    listener2.wait();
+                    if ENABLE_END_BARRIER {
+                        listener2.wait();
+                    }
                     state ^= true;
                     if ENABLE_MODULE_TIME {
                         println!("BPF1: {:?}", end);
@@ -402,14 +427,20 @@ if ENABLE_MODULE_TIME {
                 loop {
                     listener3.wait();
                     let start = Instant::now();
-                    unsafe {bandpass_filter.lock().unwrap_unchecked().process(
-                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
-                        &mut intermediate_signal_out[state as usize]
-                            .lock()
-                            .unwrap_unchecked(),
-                    );}
+                    unsafe {
+                        bandpass_filter.lock().unwrap_unchecked().process(
+                            &intermediate_signal[(!state) as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                            &mut intermediate_signal_out[state as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                        );
+                    }
                     let end = start.elapsed();
-                    listener3.wait();
+                    if ENABLE_END_BARRIER {
+                        listener3.wait();
+                    }
                     state ^= true;
                     if ENABLE_MODULE_TIME {
                         println!("BPF2 : {:?}", end);
@@ -432,12 +463,20 @@ if ENABLE_MODULE_TIME {
                 loop {
                     listener4.wait();
                     let start = Instant::now();
-                    unsafe {demodulation.lock().unwrap_unchecked().process(
-                        &intermediate_signal[(!state) as usize].lock().unwrap_unchecked(),
-                        &mut demodulate_signal[state as usize].lock().unwrap_unchecked(),
-                    );}
+                    unsafe {
+                        demodulation.lock().unwrap_unchecked().process(
+                            &intermediate_signal[(!state) as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                            &mut demodulate_signal[state as usize]
+                                .lock()
+                                .unwrap_unchecked(),
+                        );
+                    }
                     let end = start.elapsed();
-                    listener4.wait();
+                    if ENABLE_END_BARRIER {
+                        listener4.wait();
+                    }
                     state ^= true;
                     if ENABLE_MODULE_TIME {
                         println!("De-Modulate: {:?}", end);
@@ -536,7 +575,9 @@ if ENABLE_MODULE_TIME {
         }
         // println!("check point3");
         self.read_state ^= true;
-        self.barrier.wait();
+        if ENABLE_END_BARRIER {
+            self.barrier.wait();
+        }
     }
     pub fn process_serial(
         &mut self,

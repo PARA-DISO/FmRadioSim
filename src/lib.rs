@@ -1,13 +1,20 @@
+// use dasp_ring_buffer::Fixed as RingBuffer;
 use fm_core::FmRadioSim;
 use nih_plug::prelude::*;
-use parking_lot::Mutex;
-use std::sync::Arc;
+// use parking_lot::Mutex;
+use std::{collections::VecDeque, net::UdpSocket, sync::Arc, time::Duration};
+// Debug
+// use log::{LevelFilter,info};
+// use libudprint::{init};
 
 struct Gain {
+    socket: Option<UdpSocket>,
     params: Arc<GainParams>,
     fmradio: FmRadioSim,
-    buf_l: Vec<f32>,
-    buf_r: Vec<f32>,
+    tmp_buffer_l: Vec<f32>,
+    tmp_buffer_r: Vec<f32>,
+    buf_l: VecDeque<f32>,
+    buf_r: VecDeque<f32>,
     sample_rate: f32,
     buffer_size: usize,
 }
@@ -16,7 +23,7 @@ struct Gain {
 /// the plugin's parameters, persistent serializable fields, and nested parameter groups. You can
 /// also easily implement [`Params`] by hand if you want to, for instance, have multiple instances
 /// of a parameters struct for multiple identical oscillators/filters/envelopes.
-#[derive(Params, Clone)]
+#[derive(Params, Clone, Default)]
 struct GainParams {
     // The parameter's ID is used to identify the parameter in the wrapped plugin API. As long as
     // these IDs remain constant, you can rename and reorder these fields as you wish. The
@@ -59,68 +66,44 @@ struct ArrayParams {
 impl Default for Gain {
     fn default() -> Self {
         Self {
+            socket: None,
             params: Arc::new(GainParams::default()),
             sample_rate: 44100.,
-            buffer_size: 700,
-            buf_l: vec![0.; 700],
-            buf_r: vec![0.; 700],
-            fmradio: FmRadioSim::from(44100, 700, 79_500_000f64),
+            buffer_size: Self::DEFAULT_BUFFER_SIZE,
+            tmp_buffer_l: vec![0.; Self::DEFAULT_BUFFER_SIZE],
+            tmp_buffer_r: vec![0.; Self::DEFAULT_BUFFER_SIZE],
+            buf_l: VecDeque::from([0f32; 4096]),
+            buf_r: VecDeque::from([0f32; 4096]),
+            fmradio: FmRadioSim::from(
+                44100,
+                Self::DEFAULT_BUFFER_SIZE,
+                79_500_000f64,
+            ),
         }
     }
 }
-// impl Gain {}
+impl Gain {
+    const DEFAULT_BUFFER_SIZE: usize = 700;
+    const RING_BUFFER_SIZE: usize = 4;
+    pub fn add_socket(&mut self, ip: impl AsRef<str>) {
+        if self.socket.is_none() {
+            let socket = UdpSocket::bind("127.0.0.1:12345").unwrap();
+            socket.connect(ip.as_ref()).unwrap();
+            self.socket = Some(socket);
+        }
+    }
+    pub fn info(&self, msg: String) {
+        if let Some(socket) = &self.socket {
+            socket.send(msg.as_bytes()).unwrap();
+        };
+    }
+}
 unsafe impl Send for Gain {}
-impl Default for GainParams {
-    fn default() -> Self {
-        Self {
-            // This gain is stored as linear gain. NIH-plug comes with useful conversion functions
-            // to treat these kinds of parameters as if we were dealing with decibels. Storing this
-            // as decibels is easier to work with, but requires a conversion for every sample.
-            // gain: FloatParam::new(
-            //     "Gain",
-            //     util::db_to_gain(0.0),
-            //     FloatRange::Skewed {
-            //         min: util::db_to_gain(-30.0),
-            //         max: util::db_to_gain(30.0),
-            //         // This makes the range appear as if it was linear when displaying the values as
-            //         // decibels
-            //         factor: FloatRange::gain_skew_factor(-30.0, 30.0),
-            //     },
-            // )
-            // // Because the gain parameter is stored as linear gain instead of storing the value as
-            // // decibels, we need logarithmic smoothing
-            // .with_smoother(SmoothingStyle::Logarithmic(50.0))
-            // .with_unit(" dB")
-            // // There are many predefined formatters we can use here. If the gain was stored as
-            // // decibels instead of as a linear gain value, we could have also used the
-            // // `.with_step_size(0.1)` function to get internal rounding.
-            // .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-            // .with_string_to_value(formatters::s2v_f32_gain_to_db()),
-            // // Persisted fields can be initialized like any other fields, and they'll keep their
-            // // values when restoring the plugin's state.
-            // random_data: Mutex::new(Vec::new()),
-            // sub_params: SubParams {
-            //     nested_parameter: FloatParam::new(
-            //         "Unused Nested Parameter",
-            //         0.5,
-            //         FloatRange::Skewed {
-            //             min: 2.0,
-            //             max: 2.4,
-            //             factor: FloatRange::skew_factor(2.0),
-            //         },
-            //     )
-            //     .with_value_to_string(formatters::v2s_f32_rounded(2)),
-            // },
-            // array_params: [1, 2, 3].map(|index| ArrayParams {
-            //     nope: FloatParam::new(
-            //         format!("Nope {index}"),
-            //         0.5,
-            //         FloatRange::Linear { min: 1.0, max: 2.0 },
-            //     ),
-            // }),
-        }
-    }
-}
+// impl Default for GainParams {
+//     fn default() -> Self {
+//         Self {}
+//     }
+// }
 
 impl Plugin for Gain {
     const NAME: &'static str = "Gain";
@@ -187,31 +170,43 @@ impl Plugin for Gain {
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
         let buffer_size = buffer.samples();
-        if buffer_size != self.buffer_size {
-            self.buffer_size = buffer_size;
-            self.fmradio = FmRadioSim::from(
-                self.sample_rate as usize,
-                buffer_size,
-                79_500_000f64,
-            );
-            self.fmradio.init_thread();
-            self.buf_l = vec![0.; buffer_size];
-            self.buf_r = vec![0.; buffer_size];
-        }
+        // if buffer_size != self.buffer_size {
+        //     self.buffer_size = buffer_size;
+        //     self.fmradio = FmRadioSim::from(
+        //         self.sample_rate as usize,
+        //         buffer_size,
+        //         79_500_000f64,
+        //     );
+        //     self.fmradio.init_thread();
+        //     self.buf_l = vec![0.; buffer_size];
+        //     self.buf_r = vec![0.; buffer_size];
+        // }
         let samples = buffer.as_slice();
+        // std::thread::sleep(Duration::from_secs(1));
+        // self.info(format!("Sample Size: {buffer_size}"));
+        // self.info("Start Processing".into());
         self.fmradio.process(
             samples[0],
             samples[1],
-            &mut self.buf_l,
-            &mut self.buf_r,
+            &mut self.tmp_buffer_l,
+            &mut self.tmp_buffer_r,
         );
         buffer
             .iter_samples()
-            .zip([&self.buf_l, &self.buf_r])
+            .zip([&mut self.buf_l, &mut self.buf_r])
             .for_each(|(mut dst, buf)| {
-                dst.iter_mut().zip(buf).for_each(|(dst, src)| *dst = *src);
+                dst.iter_mut().for_each(|d| {
+                    *d = buf.pop_front().unwrap();
+                });
             });
-
+        self.tmp_buffer_l
+            .iter()
+            .zip(self.tmp_buffer_r.iter())
+            .for_each(|(l, r)| {
+                self.buf_l.push_back(*l);
+                self.buf_r.push_back(*r);
+            });
+        // self.info(format!("Sample Size: {buffer_size}"));
         ProcessStatus::Normal
     }
     fn initialize(
@@ -220,7 +215,10 @@ impl Plugin for Gain {
         buffer_config: &BufferConfig,
         _context: &mut impl InitContext<Self>,
     ) -> bool {
-        // simple_logging::log_to_file("./fmradio.log", log::LevelFilter::Debug);
+        /* Add input/output Buffer */
+        self.add_socket("127.0.0.1:54635");
+        // simple_logging::log_to_file("./fmradio.log", log::LevelFilter::Info).unwrap();
+        // init("127.0.0.1:54635", LevelFilter::Info).unwrap();
 
         if self.sample_rate != buffer_config.sample_rate {
             self.fmradio = FmRadioSim::from(
@@ -228,11 +226,12 @@ impl Plugin for Gain {
                 700,
                 79_500_000f64,
             );
-            self.fmradio.init_thread();
+            
             self.sample_rate = buffer_config.sample_rate;
         }
+        self.fmradio.init_thread();
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
-        log::info!("Initialized: fs: {}", buffer_config.sample_rate);
+        self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
         true
     }
     // This can be used for cleaning up special resources like socket connections whenever the

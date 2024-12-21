@@ -27,10 +27,10 @@ const CARRIER_FREQ: f64 = 79_500_000f64;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 1000;
 // const RENDER_MAX: usize = 10;
-const ENABLE_PARALLEL: bool = true;
+const ENABLE_PARALLEL: bool = false;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
-const FIXED_RENDERING_DURATION: u64 = 5; // 1ms1
+const FIXED_RENDERING_DURATION: u64 = 16; // 1ms1
 const ENABLE_FIXED_TIME_RENDER: bool = true;
 const FRAME_TIME: f64 = BUFFER_SIZE as f64 / AUDIO_SAMPLE_RATE as f64;
 pub const GRAPH_LINE_COLOR: RGBColor = RGBColor(60, 179, 113);
