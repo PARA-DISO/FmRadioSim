@@ -3,7 +3,12 @@ name = "frequency_modulation"
 version = "0.1.0"
 edition = "2021"
 [lib]
+name="frequency_modulation"
+path="src/lib.rs"
 crate-type = ["cdylib"]
+[[bin]]
+name="fm_sim"
+path="src/main.rs"
 [build]
 rustflags = ["-Z", "threads=8","-C", "target-cpu=native"]
 [profile.release]
@@ -30,6 +35,9 @@ fm-core={path = "fm-core"}
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
 # simple-logging = "2.0.2"
 log = "0.4.22"
+clap = { version = "4.5.23", features = ["derive"] }
+hound = "3.5.1"
+# symphonia = "0.5.4"
 # parking_lot = "0.12"
 # chrono = "0.4.39"
 # dasp_ring_buffer = "0.11.0"

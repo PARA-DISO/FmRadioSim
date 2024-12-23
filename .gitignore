@@ -3,3 +3,6 @@
 log
 *.lib
 *.asm
+*.wav
+*.flac
+*.mp3
