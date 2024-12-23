@@ -15,7 +15,8 @@ use std::{
     thread,
     time::Instant,
 };
-use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer, Shareable};
+pub use utils::Shareable;
+use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer};
 
 const ENABLE_MODULE_TIME: bool = false;
 const ENABLE_END_BARRIER: bool = false;
@@ -100,6 +101,7 @@ pub struct FmRadioSim {
     barrier: Arc<Barrier>,
     is_init: bool,
 }
+unsafe impl Send for FmRadioSim {}
 impl FmRadioSim {
     // define constants
     // pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;

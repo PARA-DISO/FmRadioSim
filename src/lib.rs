@@ -1,22 +1,32 @@
 // use dasp_ring_buffer::Fixed as RingBuffer;
-use fm_core::FmRadioSim;
+use fm_core::{sharable, FmRadioSim, Shareable};
 use nih_plug::prelude::*;
 // use parking_lot::Mutex;
-use std::{collections::VecDeque, net::UdpSocket, sync::Arc, time::Duration};
+use std::{
+    collections::VecDeque,
+    net::UdpSocket,
+    sync::{Arc, Condvar, Mutex},
+    time::Duration,
+};
 // Debug
 // use log::{LevelFilter,info};
 // use libudprint::{init};
 
-struct Gain {
+struct FmSim {
     socket: Option<UdpSocket>,
-    params: Arc<GainParams>,
-    fmradio: FmRadioSim,
-    tmp_buffer_l: Vec<f32>,
-    tmp_buffer_r: Vec<f32>,
-    buf_l: VecDeque<f32>,
-    buf_r: VecDeque<f32>,
+    params: Arc<FmParams>,
+    fmradio: Shareable<FmRadioSim>,
+    input_buffer: Shareable<[VecDeque<f32>; 2]>,
+    output_buffer: Shareable<[VecDeque<f32>; 2]>,
+    // tmp_buffer_l: Vec<f32>,
+    // tmp_buffer_r: Vec<f32>,
+    // buf_l: VecDeque<f32>,
+    // buf_r: VecDeque<f32>,
     sample_rate: f32,
     buffer_size: usize,
+    //
+    input_signal: Arc<(Mutex<bool>, Condvar)>,
+    output_signal: Arc<(Mutex<bool>, Condvar)>,
 }
 
 /// The [`Params`] derive macro gathers all of the information needed for the wrapper to know about
@@ -24,7 +34,7 @@ struct Gain {
 /// also easily implement [`Params`] by hand if you want to, for instance, have multiple instances
 /// of a parameters struct for multiple identical oscillators/filters/envelopes.
 #[derive(Params, Clone, Default)]
-struct GainParams {
+struct FmParams {
     // The parameter's ID is used to identify the parameter in the wrapped plugin API. As long as
     // these IDs remain constant, you can rename and reorder these fields as you wish. The
     // parameters are exposed to the host in the same order they were defined. In this case, this
@@ -63,26 +73,45 @@ struct ArrayParams {
     pub nope: FloatParam,
 }
 
-impl Default for Gain {
+impl Default for FmSim {
     fn default() -> Self {
         Self {
             socket: None,
-            params: Arc::new(GainParams::default()),
+            params: Arc::new(FmParams::default()),
             sample_rate: 44100.,
             buffer_size: Self::DEFAULT_BUFFER_SIZE,
-            tmp_buffer_l: vec![0.; Self::DEFAULT_BUFFER_SIZE],
-            tmp_buffer_r: vec![0.; Self::DEFAULT_BUFFER_SIZE],
-            buf_l: VecDeque::from([0f32; 4096]),
-            buf_r: VecDeque::from([0f32; 4096]),
-            fmradio: FmRadioSim::from(
+            // tmp_buffer_l: vec![0.; Self::DEFAULT_BUFFER_SIZE],
+            // tmp_buffer_r: vec![0.; Self::DEFAULT_BUFFER_SIZE],
+            // buf_l: VecDeque::from([0f32; 4096]),
+            // buf_r: VecDeque::from([0f32; 4096]),
+            input_buffer: sharable!([
+                VecDeque::<f32>::with_capacity(
+                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+                ),
+                VecDeque::<f32>::with_capacity(
+                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+                )
+            ]),
+            output_buffer: sharable!([
+                VecDeque::<f32>::with_capacity(
+                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+                ),
+                VecDeque::<f32>::with_capacity(
+                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+                )
+            ]),
+            fmradio: sharable!(FmRadioSim::from(
                 44100,
                 Self::DEFAULT_BUFFER_SIZE,
                 79_500_000f64,
-            ),
+            )),
+            //
+            input_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            output_signal: Arc::new((Mutex::new(false), Condvar::new())),
         }
     }
 }
-impl Gain {
+impl FmSim {
     const DEFAULT_BUFFER_SIZE: usize = 700;
     const RING_BUFFER_SIZE: usize = 4;
     pub fn add_socket(&mut self, ip: impl AsRef<str>) {
@@ -98,14 +127,14 @@ impl Gain {
         };
     }
 }
-unsafe impl Send for Gain {}
-// impl Default for GainParams {
+unsafe impl Send for FmSim {}
+// impl Default for FmParams {
 //     fn default() -> Self {
 //         Self {}
 //     }
 // }
 
-impl Plugin for Gain {
+impl Plugin for FmSim {
     const NAME: &'static str = "Gain";
     const VENDOR: &'static str = "Moist Plugins GmbH";
     // You can use `env!("CARGO_PKG_HOMEPAGE")` to reference the homepage field from the
@@ -181,31 +210,66 @@ impl Plugin for Gain {
         //     self.buf_l = vec![0.; buffer_size];
         //     self.buf_r = vec![0.; buffer_size];
         // }
+        self.info(String::from("start process"));
+        let (input_flag, input_sig) = &*self.input_signal;
+        let (output_flag, output_sig) = &*self.output_signal;
         let samples = buffer.as_slice();
+        let is_input_empty = self.input_buffer.lock().unwrap()[0].is_empty();
+        self.info(String::from("process init end"));
+        // 入力バッファへデータを追加
+        samples
+            .iter()
+            .zip(self.input_buffer.lock().unwrap().iter_mut())
+            .for_each(|(samples, buffer)| {
+                samples.iter().for_each(|&sample| buffer.push_back(sample));
+            });
+
+        if is_input_empty {
+            self.info(String::from("buffer input"));
+            *input_flag.lock().unwrap() = true;
+            input_sig.notify_one();
+        }
+        // write output data from buffer
+        if self.output_buffer.lock().unwrap().len() == 0 {
+            // waiting for add samples
+            let mut flag =
+                output_sig.wait(output_flag.lock().unwrap()).unwrap();
+            *flag = false;
+        }
+        samples
+            .iter_mut()
+            .zip(self.output_buffer.lock().unwrap().iter_mut())
+            .for_each(|(samples, buffer)| {
+                samples
+                    .iter_mut()
+                    .for_each(|sample| *sample = buffer.pop_front().unwrap());
+            });
+        // Below is Basic Code
+
         // std::thread::sleep(Duration::from_secs(1));
         // self.info(format!("Sample Size: {buffer_size}"));
         // self.info("Start Processing".into());
-        self.fmradio.process(
-            samples[0],
-            samples[1],
-            &mut self.tmp_buffer_l,
-            &mut self.tmp_buffer_r,
-        );
-        buffer
-            .iter_samples()
-            .zip([&mut self.buf_l, &mut self.buf_r])
-            .for_each(|(mut dst, buf)| {
-                dst.iter_mut().for_each(|d| {
-                    *d = buf.pop_front().unwrap();
-                });
-            });
-        self.tmp_buffer_l
-            .iter()
-            .zip(self.tmp_buffer_r.iter())
-            .for_each(|(l, r)| {
-                self.buf_l.push_back(*l);
-                self.buf_r.push_back(*r);
-            });
+        // self.fmradio.process(
+        //     samples[0],
+        //     samples[1],
+        //     &mut self.tmp_buffer_l,
+        //     &mut self.tmp_buffer_r,
+        // );
+        // buffer
+        //     .iter_samples()
+        //     .zip([&mut self.buf_l, &mut self.buf_r])
+        //     .for_each(|(mut dst, buf)| {
+        //         dst.iter_mut().for_each(|d| {
+        //             *d = buf.pop_front().unwrap();
+        //         });
+        //     });
+        // self.tmp_buffer_l
+        //     .iter()
+        //     .zip(self.tmp_buffer_r.iter())
+        //     .for_each(|(l, r)| {
+        //         self.buf_l.push_back(*l);
+        //         self.buf_r.push_back(*r);
+        //     });
         // self.info(format!("Sample Size: {buffer_size}"));
         ProcessStatus::Normal
     }
@@ -221,25 +285,88 @@ impl Plugin for Gain {
         // init("127.0.0.1:54635", LevelFilter::Info).unwrap();
 
         if self.sample_rate != buffer_config.sample_rate {
-            self.fmradio = FmRadioSim::from(
+            self.fmradio = sharable!(FmRadioSim::from(
                 buffer_config.sample_rate as usize,
                 700,
                 79_500_000f64,
-            );
-            
+            ));
+
             self.sample_rate = buffer_config.sample_rate;
         }
-        self.fmradio.init_thread();
+        if let Ok(mut buf) = self.output_buffer.lock() {
+            // バッファの0埋め
+            let size = buf[0].capacity();
+            for _ in 0..(size - buf[0].len()) {
+                buf[0].push_back(0.);
+                buf[1].push_back(0.);
+            }
+        }
+        self.fmradio.lock().unwrap().init_thread();
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
         self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
+        {
+            let mut l_buffer = vec![0.; self.buffer_size];
+            let mut r_buffer = vec![0.; self.buffer_size];
+            let mut l_dst_buffer = vec![0.; self.buffer_size];
+            let mut r_dst_buffer = vec![0.; self.buffer_size];
+            let input_buffer = Arc::clone(&self.input_buffer);
+            let output_buffer = Arc::clone(&self.output_buffer);
+            let fm_sim = Arc::clone(&self.fmradio);
+            let input_signal = Arc::clone(&self.input_signal);
+            let output_signal = Arc::clone(&self.output_signal);
+            let _handle = std::thread::spawn(move || {
+                let (input_flag, input_sig) = &*input_signal;
+                let (output_flag, output_sig) = &*output_signal;
+                
+                loop {
+                    if input_buffer.lock().unwrap().is_empty() {
+                        // waiting for add samples
+                        let mut flag =
+                            input_sig.wait(input_flag.lock().unwrap()).unwrap();
+                        *flag = false;
+                    }
+                    let mut inputs = input_buffer.lock().unwrap();
+                    // Bello Code is not Work. maybe popping for empty buffer
+                    // l_buffer.iter_mut().zip(r_buffer.iter_mut()).for_each(
+                    //     |(l, r)| {
+                    //         *l = inputs[0].pop_front().unwrap();
+                    //         *r = inputs[1].pop_front().unwrap();
+                    //     },
+                    // );
+                    fm_sim.lock().unwrap().process(
+                        &l_buffer,
+                        &r_buffer,
+                        &mut l_dst_buffer,
+                        &mut r_dst_buffer,
+                    );
+                    {
+                        let mut buffer = output_buffer.lock().unwrap();
+                        let is_buffer_empty = buffer[0].is_empty();
+                        l_dst_buffer.iter().zip(r_dst_buffer.iter()).for_each(
+                            |(l, r)| {
+                                buffer[0].push_back(*l);
+                                buffer[1].push_back(*r);
+                            },
+                        );
+                        if is_buffer_empty {
+                            *output_flag.lock().unwrap() = true;
+                            output_sig.notify_one();
+                        }
+                    }
+                }
+            });
+        }
+        self.info(format!("Initialized end"));
         true
     }
     // This can be used for cleaning up special resources like socket connections whenever the
     // plugin is deactivated. Most plugins won't need to do anything here.
-    fn deactivate(&mut self) {}
+    fn deactivate(&mut self) {
+      self.info(format!("call deactivate"));
+    }
 }
 
-impl ClapPlugin for Gain {
+impl ClapPlugin for FmSim {
     const CLAP_ID: &'static str = "com.moist-plugins-gmbh.gain";
     const CLAP_DESCRIPTION: Option<&'static str> =
         Some("A smoothed gain parameter example plugin");
@@ -253,11 +380,11 @@ impl ClapPlugin for Gain {
     ];
 }
 
-impl Vst3Plugin for Gain {
+impl Vst3Plugin for FmSim {
     const VST3_CLASS_ID: [u8; 16] = *b"GainMoistestPlug";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Tools];
 }
 
-nih_export_clap!(Gain);
-nih_export_vst3!(Gain);
+nih_export_clap!(FmSim);
+nih_export_vst3!(FmSim);
