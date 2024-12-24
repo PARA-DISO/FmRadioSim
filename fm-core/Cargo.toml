@@ -9,6 +9,6 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 [build-dependencies]
-cc = "1.1.31"
+cc = "1.2.5"
 [dependencies]
 libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}

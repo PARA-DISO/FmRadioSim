@@ -22,14 +22,6 @@ members = ["gui_test"]
 # cc = "1.1.31"
 
 [dependencies]
-
-# rand = "0.8.5"
-# rand_distr = "0.4.3"
-# rand_mt = "4.2.2"
-# rubato = "0.16.0"
-# libsoxr = {git="https://github.com/PARA-DISO/libsoxr-rs.git", branch="include-sys"}
-# sfmt = "0.7.0"
-
 fm-core={path = "fm-core"}
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
@@ -37,18 +29,3 @@ nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
 log = "0.4.22"
 clap = { version = "4.5.23", features = ["derive"] }
 hound = "3.5.1"
-# symphonia = "0.5.4"
-# parking_lot = "0.12"
-# chrono = "0.4.39"
-# dasp_ring_buffer = "0.11.0"
-# Debug Crate
-# udprint = {path="../udpint"}
-
-# simplelog = "0.12.2"
-# nih_plug_vizia = { git="https://github.com/robbert-vdh/nih-plug" }
-# atomic_float = "1.1.0"
-# strum = {version="0.26.3", features=["derive"]}
-# strum_macros = "0.26.2"
-# rand_mt = "4.2.2"
-# easyfft = "0.4.1"
-# qd = {git="https://github.com/Barandis/qd"}

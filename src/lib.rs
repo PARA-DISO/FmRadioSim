@@ -5,7 +5,7 @@ use nih_plug::prelude::*;
 use std::{
     collections::VecDeque,
     net::UdpSocket,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Barrier, Condvar, Mutex},
     time::Duration,
 };
 // Debug
@@ -25,8 +25,8 @@ struct FmSim {
     sample_rate: f32,
     buffer_size: usize,
     //
-    input_signal: Arc<(Mutex<bool>, Condvar)>,
-    output_signal: Arc<(Mutex<bool>, Condvar)>,
+    input_signal_wait: Arc<Barrier>,
+    output_signal_wait: Arc<Barrier>,
 }
 
 /// The [`Params`] derive macro gathers all of the information needed for the wrapper to know about
@@ -106,8 +106,10 @@ impl Default for FmSim {
                 79_500_000f64,
             )),
             //
-            input_signal: Arc::new((Mutex::new(false), Condvar::new())),
-            output_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            // input_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            // output_signal: Arc::new((Mutex::new(false), Condvar::new())),
+            input_signal_wait: Arc::new(Barrier::new(2)),
+            output_signal_wait: Arc::new(Barrier::new(2))
         }
     }
 }
@@ -211,8 +213,8 @@ impl Plugin for FmSim {
         //     self.buf_r = vec![0.; buffer_size];
         // }
         self.info(String::from("start process"));
-        let (input_flag, input_sig) = &*self.input_signal;
-        let (output_flag, output_sig) = &*self.output_signal;
+        // let (input_flag, input_sig) = &*self.input_signal;
+        // let (output_flag, output_sig) = &*self.output_signal;
         let samples = buffer.as_slice();
         let is_input_empty = self.input_buffer.lock().unwrap()[0].is_empty();
         self.info(String::from("process init end"));
@@ -223,18 +225,23 @@ impl Plugin for FmSim {
             .for_each(|(samples, buffer)| {
                 samples.iter().for_each(|&sample| buffer.push_back(sample));
             });
-
+        if is_input_empty {
+          self.input_signal_wait.wait();
+        }
         if is_input_empty {
             self.info(String::from("buffer input"));
-            *input_flag.lock().unwrap() = true;
-            input_sig.notify_one();
+            // *input_flag.lock().unwrap() = true;
+            // input_sig.notify_one();
         }
         // write output data from buffer
-        if self.output_buffer.lock().unwrap().len() == 0 {
-            // waiting for add samples
-            let mut flag =
-                output_sig.wait(output_flag.lock().unwrap()).unwrap();
-            *flag = false;
+        // if self.output_buffer.lock().unwrap().len() == 0 {
+        //     // waiting for add samples
+        //     let mut flag =
+        //         output_sig.wait(output_flag.lock().unwrap()).unwrap();
+        //     *flag = false;
+        // }
+        if self.output_buffer.lock().unwrap()[0].is_empty(){
+          self.output_signal_wait.wait();
         }
         samples
             .iter_mut()
@@ -312,27 +319,33 @@ impl Plugin for FmSim {
             let input_buffer = Arc::clone(&self.input_buffer);
             let output_buffer = Arc::clone(&self.output_buffer);
             let fm_sim = Arc::clone(&self.fmradio);
-            let input_signal = Arc::clone(&self.input_signal);
-            let output_signal = Arc::clone(&self.output_signal);
+            // let input_signal = Arc::clone(&self.input_signal);
+            // let output_signal = Arc::clone(&self.output_signal);
+            let wait_input = Arc::clone(&self.input_signal_wait);
+            let wait_output  = Arc::clone(&self.output_signal_wait);
             let _handle = std::thread::spawn(move || {
-                let (input_flag, input_sig) = &*input_signal;
-                let (output_flag, output_sig) = &*output_signal;
+                // let (input_flag, input_sig) = &*input_signal;
+                // let (output_flag, output_sig) = &*output_signal;
                 
                 loop {
-                    if input_buffer.lock().unwrap().is_empty() {
-                        // waiting for add samples
-                        let mut flag =
-                            input_sig.wait(input_flag.lock().unwrap()).unwrap();
-                        *flag = false;
+                    // while input_buffer.lock().unwrap().is_empty() {}
+                    if input_buffer.lock().unwrap()[0].is_empty() {
+                      wait_input.wait();
                     }
+                    // if input_buffer.lock().unwrap().is_empty() {
+                    //     // waiting for add samples
+                    //     let mut flag =
+                    //         input_sig.wait(input_flag.lock().unwrap()).unwrap();
+                    //     *flag = false;
+                    // }
                     let mut inputs = input_buffer.lock().unwrap();
-                    // Bello Code is not Work. maybe popping for empty buffer
-                    // l_buffer.iter_mut().zip(r_buffer.iter_mut()).for_each(
-                    //     |(l, r)| {
-                    //         *l = inputs[0].pop_front().unwrap();
-                    //         *r = inputs[1].pop_front().unwrap();
-                    //     },
-                    // );
+                  // Bello Code is not Work. maybe popping for empty buffer
+                    l_buffer.iter_mut().zip(r_buffer.iter_mut()).for_each(
+                        |(l, r)| {
+                            *l = inputs[0].pop_front().unwrap_or_default();
+                            *r = inputs[1].pop_front().unwrap_or_default();
+                        },
+                    );
                     fm_sim.lock().unwrap().process(
                         &l_buffer,
                         &r_buffer,
@@ -349,8 +362,9 @@ impl Plugin for FmSim {
                             },
                         );
                         if is_buffer_empty {
-                            *output_flag.lock().unwrap() = true;
-                            output_sig.notify_one();
+                            // *output_flag.lock().unwrap() = true;
+                            // output_sig.notify_one();
+                            wait_output.wait();
                         }
                     }
                 }
