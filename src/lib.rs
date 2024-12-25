@@ -391,6 +391,14 @@ impl Plugin for FmSim {
                             // socket.lock().unwrap().as_ref().unwrap().send(b"input buffer is empty");
                         }
                         let mut inputs = input_buffer.lock().unwrap();
+                        let _ = socket
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .send(format!("input buffer len: {:?}",inputs[1].get_pos()
+                      ).as_bytes());
+                        
                         inputs[0].dequeue(&mut l_buffer);
                         inputs[1].dequeue(&mut r_buffer);
                     }
@@ -414,7 +422,7 @@ impl Plugin for FmSim {
                         .unwrap()
                         .as_ref()
                         .unwrap()
-                        .send(format!("buffer len: {:?}",buffer[1].get_pos()
+                        .send(format!("output buffer len: {:?}",buffer[1].get_pos()
                       ).as_bytes());
                         let is_empty = buffer[1].is_empty();
                         buffer[0].enqueue(&l_dst_buffer);
