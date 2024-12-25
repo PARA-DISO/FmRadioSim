@@ -11,7 +11,7 @@ fn main() {
         .flag("/Ob3")
         // .flag("/favor:AMD64")
         .flag("/GS-")
-        .flag("/Gv")
+        // .flag("/Gv")
         // .flag("/GL")
         .flag("/utf-8")
         // .flag("/TC")

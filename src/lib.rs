@@ -8,7 +8,7 @@ use std::{
     net::UdpSocket,
     sync::{mpsc, Arc, Barrier, Condvar, Mutex},
     thread::JoinHandle,
-    time::Duration,
+    time::{Duration, Instant},
 };
 // Debug
 // use log::{LevelFilter,info};
@@ -71,19 +71,6 @@ struct FmParams {
     // pub array_params: [ArrayParams; 3],
 }
 
-#[derive(Params)]
-struct SubParams {
-    #[id = "thing"]
-    pub nested_parameter: FloatParam,
-}
-
-#[derive(Params)]
-struct ArrayParams {
-    /// This parameter's ID will get a `_1`, `_2`, and a `_3` suffix because of how it's used in
-    /// `array_params` above.
-    #[id = "noope"]
-    pub nope: FloatParam,
-}
 
 impl Default for FmSim {
     fn default() -> Self {
@@ -139,7 +126,7 @@ impl Default for FmSim {
     }
 }
 impl FmSim {
-    const DEFAULT_BUFFER_SIZE: usize = 700;
+    const DEFAULT_BUFFER_SIZE: usize = 300;
     const RING_BUFFER_SIZE: usize = 8;
     pub fn add_socket(&mut self, ip: impl AsRef<str>) {
         if self.socket.lock().unwrap().is_none() {
@@ -261,8 +248,9 @@ impl Plugin for FmSim {
             self.input_signal_wait.wait();
         }
         if self.output_buffer.lock().unwrap()[1].is_empty() {
+          self.info(String::from("output buffer is empty"));
             self.output_signal_wait.wait();
-            self.info(String::from("output buffer is empty"));
+            
         }
         // 出力バッファからデータを取り出す
         samples
@@ -348,18 +336,10 @@ impl Plugin for FmSim {
         }
         let (tx, rx) = mpsc::channel::<usize>();
         self.msg_sender = Some(tx);
-        // if let Ok(mut buf) = self.output_buffer.lock() {
-        //     // バッファの0埋め
-        //     let size = buf[0].capacity();
-        //     for _ in 0..(size - buf[0].len()) {
-        //         buf[0].push_back(0.);
-        //         buf[1].push_back(0.);
-        //     }
+        // if let Ok(buf) = &mut self.output_buffer.lock() {
+        //     buf[0].set_pos(3);
+        //     buf[1].set_pos(3);
         // }
-        if let Ok(buf) = &mut self.output_buffer.lock() {
-            buf[0].set_pos(3);
-            buf[1].set_pos(3);
-        }
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
         self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
         {
@@ -379,7 +359,7 @@ impl Plugin for FmSim {
             // fmradio.init_thread();
             // let input_signal = Arc::clone(&self.input_signal);
             // let output_signal = Arc::clone(&self.output_signal);
-            let start_barrier = Arc::clone(&self.start_barrier);
+            let _start_barrier = Arc::clone(&self.start_barrier);
             let wait_input = Arc::clone(&self.input_signal_wait);
             let wait_output = Arc::clone(&self.output_signal_wait);
             //
@@ -397,7 +377,7 @@ impl Plugin for FmSim {
                 let mut fmradio =
                     FmRadioSim::from(sample_rate, Self::DEFAULT_BUFFER_SIZE, 79_500_000f64);
                 fmradio.init_thread();
-                socket
+                let _ = socket
                     .lock()
                     .unwrap()
                     .as_ref()
@@ -420,13 +400,22 @@ impl Plugin for FmSim {
                     // ].iter_mut()).for_each(
                     //     |(src, dst)| {
                     //       dst.iter_mut().zip(src.iter()).for_each(|(d,s)| {
-                    //         *d = 2. * *s;
+                    //         *d = 0.9 * *s;
                     //       });
                     //     },
                     // );
+                    // let start = Instant::now();
                     fmradio.process(&l_buffer, &r_buffer, &mut l_dst_buffer, &mut r_dst_buffer);
+                    // let end = start.elapsed();
                     {
                         let mut buffer = output_buffer.lock().unwrap();
+                        let _ = socket
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .send(format!("buffer len: {:?}",buffer[1].get_pos()
+                      ).as_bytes());
                         let is_empty = buffer[1].is_empty();
                         buffer[0].enqueue(&l_dst_buffer);
                         buffer[1].enqueue(&r_dst_buffer);
@@ -434,21 +423,28 @@ impl Plugin for FmSim {
                             wait_output.wait();
                         }
                     }
+                    // let _ = socket
+                    // .lock()
+                    // .unwrap()
+                    // .as_ref()
+                    // .unwrap()
+                    // .send(format!("elapsed: {:?}",end).as_bytes());
                 }
             });
             self.handle = Some(handle);
         }
-        self.info(format!("Initialized end"));
+        self.info("Initialized end".to_string());
         true
     }
     // This can be used for cleaning up special resources like socket connections whenever the
     // plugin is deactivated. Most plugins won't need to do anything here.
     fn deactivate(&mut self) {
-        self.info(format!("call deactivate"));
-        self.msg_sender.as_ref().unwrap().send(0);
-        if let Some(handle) = &self.handle {
-            // handle.close();
-        }
+        self.info("call deactivate".to_string());
+        let _ = self.msg_sender.as_ref().unwrap().send(0);
+        // if let Some(handle) = &self.handle {
+        //     // handle.close();
+        // }
+        *self.socket.lock().unwrap() = None;
     }
 }
 

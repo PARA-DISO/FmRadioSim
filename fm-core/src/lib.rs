@@ -1,4 +1,4 @@
-#![feature(abi_vectorcall)]
+// #![feature(abi_vectorcall)]
 mod modulation_modules;
 use libsoxr::{
     datatype::Datatype,
@@ -21,7 +21,8 @@ use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer};
 const ENABLE_MODULE_TIME: bool = false;
 const ENABLE_END_BARRIER: bool = false;
 #[link(name = "freq_modulation")]
-extern "vectorcall" {
+extern "C" {
+// extern "vectorcall" {
     fn fm_modulate(
         output_signal: *mut f64,
         input_signal: *const f64,
