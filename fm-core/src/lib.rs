@@ -1,3 +1,4 @@
+#![feature(abi_vectorcall)]
 mod modulation_modules;
 use libsoxr::{
     datatype::Datatype,
@@ -17,11 +18,10 @@ use std::{
 };
 pub use utils::Shareable;
 use utils::{generate_pipline_buffer, ExecFlag, PipeLineBuffer};
-
 const ENABLE_MODULE_TIME: bool = false;
 const ENABLE_END_BARRIER: bool = false;
 #[link(name = "freq_modulation")]
-extern "C" {
+extern "vectorcall" {
     fn fm_modulate(
         output_signal: *mut f64,
         input_signal: *const f64,
@@ -83,15 +83,15 @@ pub struct FmRadioSim {
     downsampler_for_radio_waves: ResamplerInfo,
     // internal buffer
     // interleave/de-interleave
-    tmp_buffer: [Vec<f64>; 2],      // audio sample rate
-    audio_in_buffer: [Vec<f64>; 2], // 125kHz
-    composite_signal: Vec<f64>,     // 125kHz
-    up_sampled_signal: PipeLineBuffer, // 192MHz
-    modulate_signal: PipeLineBuffer, // 192MHz
+    tmp_buffer: [Vec<f64>; 2],            // audio sample rate
+    audio_in_buffer: [Vec<f64>; 2],       // 125kHz
+    composite_signal: Vec<f64>,           // 125kHz
+    up_sampled_signal: PipeLineBuffer,    // 192MHz
+    modulate_signal: PipeLineBuffer,      // 192MHz
     intermediate_signal1: PipeLineBuffer, // 192MHz (inner 384MHz)
     intermediate_signal2: PipeLineBuffer, // 48MHz?
     intermediate_signal3: PipeLineBuffer, // 48MHz
-    demodulate_signal: PipeLineBuffer, // 48MHz
+    demodulate_signal: PipeLineBuffer,    // 48MHz
     // demodulate_signal: Vec<f64>,
     post_down_sample: Vec<f64>, // 125kHz
     restored_signal_l: Vec<f64>,
@@ -102,6 +102,7 @@ pub struct FmRadioSim {
     is_init: bool,
 }
 unsafe impl Send for FmRadioSim {}
+
 impl FmRadioSim {
     // define constants
     // pub const COMPOSITE_SAMPLE_RATE: usize = 125_000;
@@ -116,41 +117,19 @@ impl FmRadioSim {
 
     // }
     //
-    pub fn from(
-        audio_fs: usize,
-        buffer_size: usize,
-        carrier_freq: f64,
-    ) -> Self {
+    pub fn from(audio_fs: usize, buffer_size: usize, carrier_freq: f64) -> Self {
         // calc basic params
-        let fm_sample_rate = get_8x_sample_rate(
-            Self::FM_MODULATION_SAMPLE_RATE,
-            Self::COMPOSITE_SAMPLE_RATE,
-        );
+        let fm_sample_rate =
+            get_8x_sample_rate(Self::FM_MODULATION_SAMPLE_RATE, Self::COMPOSITE_SAMPLE_RATE);
         let intermediate_fs = fm_sample_rate / Self::RATIO_FS_INTER_FS;
         // generate soxr
         let upsampler = [
-            generate_resampler(
-                audio_fs as f64,
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-            )
-            .unwrap(),
-            generate_resampler(
-                audio_fs as f64,
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-            )
-            .unwrap(),
+            generate_resampler(audio_fs as f64, Self::COMPOSITE_SAMPLE_RATE as f64).unwrap(),
+            generate_resampler(audio_fs as f64, Self::COMPOSITE_SAMPLE_RATE as f64).unwrap(),
         ];
         let downsampler = [
-            generate_resampler(
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-                audio_fs as f64,
-            )
-            .unwrap(),
-            generate_resampler(
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-                audio_fs as f64,
-            )
-            .unwrap(),
+            generate_resampler(Self::COMPOSITE_SAMPLE_RATE as f64, audio_fs as f64).unwrap(),
+            generate_resampler(Self::COMPOSITE_SAMPLE_RATE as f64, audio_fs as f64).unwrap(),
         ];
         // calculate buffer size
         let composite_buffer_size =
@@ -160,8 +139,7 @@ impl FmRadioSim {
             fm_sample_rate,
             composite_buffer_size,
         );
-        let intermediate_buffer_size =
-            modulated_buffer_size / Self::RATIO_FS_INTER_FS;
+        let intermediate_buffer_size = modulated_buffer_size / Self::RATIO_FS_INTER_FS;
         // MHz order resampler init
         let upsampler_for_radio_waves = ResamplerInfo::new_upsample_info(
             Self::COMPOSITE_SAMPLE_RATE,
@@ -177,12 +155,8 @@ impl FmRadioSim {
             audio_sample_rate: audio_fs,
             buffer_size,
             //
-            composite: composite::CompositeSignal::new(
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-            ),
-            restore: composite::RestoreSignal::new(
-                Self::COMPOSITE_SAMPLE_RATE as f64,
-            ),
+            composite: composite::CompositeSignal::new(Self::COMPOSITE_SAMPLE_RATE as f64),
+            restore: composite::RestoreSignal::new(Self::COMPOSITE_SAMPLE_RATE as f64),
             modulator: sharable!(modulator::Modulator::from(
                 carrier_freq,
                 fm_sample_rate as f64,
@@ -220,21 +194,13 @@ impl FmRadioSim {
             composite_signal: vec![0.; composite_buffer_size],
             up_sampled_signal: generate_pipline_buffer(modulated_buffer_size),
             modulate_signal: generate_pipline_buffer(modulated_buffer_size),
-            intermediate_signal1: generate_pipline_buffer(
-                modulated_buffer_size,
-            ),
-            intermediate_signal2: generate_pipline_buffer(
-                modulated_buffer_size,
-            ),
-            intermediate_signal3: generate_pipline_buffer(
-                intermediate_buffer_size,
-            ),
+            intermediate_signal1: generate_pipline_buffer(modulated_buffer_size),
+            intermediate_signal2: generate_pipline_buffer(modulated_buffer_size),
+            intermediate_signal3: generate_pipline_buffer(intermediate_buffer_size),
             // demodulate_signal: generate_pipline_buffer(
             //     intermediate_buffer_size,
             // ),
-            demodulate_signal: generate_pipline_buffer(
-                intermediate_buffer_size,
-            ),
+            demodulate_signal: generate_pipline_buffer(intermediate_buffer_size),
             post_down_sample: vec![0.; composite_buffer_size],
             restored_signal_l: vec![0.; composite_buffer_size],
             restored_signal_r: vec![0.; composite_buffer_size],
@@ -314,9 +280,7 @@ impl FmRadioSim {
                             &up_sample_signal[(!state) as usize]
                                 .lock()
                                 .unwrap_unchecked(),
-                            &mut modulate_signal[state as usize]
-                                .lock()
-                                .unwrap_unchecked(),
+                            &mut modulate_signal[state as usize].lock().unwrap_unchecked(),
                         );
                     }
                     // println!("hoge");
@@ -350,9 +314,7 @@ impl FmRadioSim {
                     let start = Instant::now();
                     unsafe {
                         freq_converter.lock().unwrap_unchecked().process(
-                            &modulate_signal[(!state) as usize]
-                                .lock()
-                                .unwrap_unchecked(),
+                            &modulate_signal[(!state) as usize].lock().unwrap_unchecked(),
                             &mut intermediate_signal[state as usize]
                                 .lock()
                                 .unwrap_unchecked(),
@@ -374,16 +336,14 @@ impl FmRadioSim {
         {
             let bandpass_filter = Arc::clone(&self.bandpass_filter1);
             let intermediate_signal_in = Arc::clone(&self.intermediate_signal1);
-            let intermediate_signal_out =
-                Arc::clone(&self.intermediate_signal2);
+            let intermediate_signal_out = Arc::clone(&self.intermediate_signal2);
             let _ = thread::spawn(move || {
                 unsafe {
                     set_csr(crate::utils::float::FLUSH_TO_ZERO);
                 }
                 let mut state = false;
                 let intermediate_signal = Arc::clone(&intermediate_signal_in);
-                let intermediate_signal_out =
-                    Arc::clone(&intermediate_signal_out);
+                let intermediate_signal_out = Arc::clone(&intermediate_signal_out);
 
                 loop {
                     listener2.wait();
@@ -415,16 +375,14 @@ impl FmRadioSim {
         {
             let bandpass_filter = Arc::clone(&self.bandpass_filter2);
             let intermediate_signal_in = Arc::clone(&self.intermediate_signal2);
-            let intermediate_signal_out =
-                Arc::clone(&self.intermediate_signal3);
+            let intermediate_signal_out = Arc::clone(&self.intermediate_signal3);
             let _ = thread::spawn(move || {
                 unsafe {
                     set_csr(crate::utils::float::FLUSH_TO_ZERO);
                 }
                 let mut state = false;
                 let intermediate_signal = Arc::clone(&intermediate_signal_in);
-                let intermediate_signal_out =
-                    Arc::clone(&intermediate_signal_out);
+                let intermediate_signal_out = Arc::clone(&intermediate_signal_out);
 
                 loop {
                     listener3.wait();
@@ -470,9 +428,7 @@ impl FmRadioSim {
                             &intermediate_signal[(!state) as usize]
                                 .lock()
                                 .unwrap_unchecked(),
-                            &mut demodulate_signal[state as usize]
-                                .lock()
-                                .unwrap_unchecked(),
+                            &mut demodulate_signal[state as usize].lock().unwrap_unchecked(),
                         );
                     }
                     let end = start.elapsed();
@@ -504,14 +460,10 @@ impl FmRadioSim {
             }
         }
         // up sample
-        let _ = self.upsampler[0].process::<f64, f64>(
-            Some(&self.tmp_buffer[0]),
-            &mut self.audio_in_buffer[0],
-        );
-        let _ = self.upsampler[1].process::<f64, f64>(
-            Some(&self.tmp_buffer[1]),
-            &mut self.audio_in_buffer[1],
-        );
+        let _ = self.upsampler[0]
+            .process::<f64, f64>(Some(&self.tmp_buffer[0]), &mut self.audio_in_buffer[0]);
+        let _ = self.upsampler[1]
+            .process::<f64, f64>(Some(&self.tmp_buffer[1]), &mut self.audio_in_buffer[1]);
         // composite
         self.composite.process(
             &self.audio_in_buffer[0],
@@ -560,14 +512,10 @@ impl FmRadioSim {
             &mut self.restored_signal_r,
         );
         // down sample
-        let _ = self.downsampler[0].process::<f64, f64>(
-            Some(&self.restored_signal_l),
-            &mut self.tmp_buffer[0],
-        );
-        let _ = self.downsampler[1].process::<f64, f64>(
-            Some(&self.restored_signal_r),
-            &mut self.tmp_buffer[1],
-        );
+        let _ = self.downsampler[0]
+            .process::<f64, f64>(Some(&self.restored_signal_l), &mut self.tmp_buffer[0]);
+        let _ = self.downsampler[1]
+            .process::<f64, f64>(Some(&self.restored_signal_r), &mut self.tmp_buffer[1]);
         // interleave
         for (i, lr) in dst_l.iter_mut().zip(dst_r.iter_mut()).enumerate() {
             unsafe {
@@ -604,10 +552,8 @@ impl FmRadioSim {
             &mut self.audio_in_buffer[0],
             // &mut self.composite_signal
         );
-        let _ = self.upsampler[1].process::<f64, f64>(
-            Some(&self.tmp_buffer[1]),
-            &mut self.audio_in_buffer[1],
-        );
+        let _ = self.upsampler[1]
+            .process::<f64, f64>(Some(&self.tmp_buffer[1]), &mut self.audio_in_buffer[1]);
         let lap0 = timer_start.elapsed();
         // composite
         self.composite.process(
@@ -676,14 +622,10 @@ impl FmRadioSim {
         );
         let lap9 = timer_start.elapsed();
         // down sample
-        let _ = self.downsampler[0].process::<f64, f64>(
-            Some(&self.restored_signal_l),
-            &mut self.tmp_buffer[0],
-        );
-        let _ = self.downsampler[1].process::<f64, f64>(
-            Some(&self.restored_signal_r),
-            &mut self.tmp_buffer[1],
-        );
+        let _ = self.downsampler[0]
+            .process::<f64, f64>(Some(&self.restored_signal_l), &mut self.tmp_buffer[0]);
+        let _ = self.downsampler[1]
+            .process::<f64, f64>(Some(&self.restored_signal_r), &mut self.tmp_buffer[1]);
         let lap10 = timer_start.elapsed();
         // interleave
         for (i, lr) in dst_l.iter_mut().zip(dst_r.iter_mut()).enumerate() {

@@ -16,8 +16,7 @@ impl CompositeSignal {
     const PILOT_FREQ: f64 = 19_000.;
     const CARRIER_FREQ: f64 = Self::PILOT_FREQ * 2.;
     const CUT_OFF_FREQ: f64 = 15_000f64;
-    pub const DEFAULT_SAMPLE_RATE: f64 =
-        (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) * 3.;
+    pub const DEFAULT_SAMPLE_RATE: f64 = (Self::CARRIER_FREQ + Self::CUT_OFF_FREQ) * 3.;
     pub fn new(f: f64) -> Self {
         Self {
             lpf: Lpf::new(f, Self::CUT_OFF_FREQ, Lpf::Q),
@@ -30,12 +29,7 @@ impl CompositeSignal {
     pub fn sample_rate(&self) -> f64 {
         self.sample_rate
     }
-    pub fn process(
-        &mut self,
-        l_channel: &[f64],
-        r_channel: &[f64],
-        buffer: &mut [f64],
-    ) {
+    pub fn process(&mut self, l_channel: &[f64], r_channel: &[f64], buffer: &mut [f64]) {
         for i in 0..l_channel.len() {
             // Low Pass
             let l = self
@@ -80,11 +74,7 @@ impl RestoreSignal {
     const CUT_OFF_FREQ: f64 = 15_000f64;
     pub fn new(f: f64) -> Self {
         Self {
-            input_filter: Lpf::new(
-                f,
-                Self::CARRIER_FREQ + Self::CUT_OFF_FREQ,
-                Lpf::Q,
-            ),
+            input_filter: Lpf::new(f, Self::CARRIER_FREQ + Self::CUT_OFF_FREQ, Lpf::Q),
             lpf16: Lpf::new(f, 16_000f64, Lpf::Q),
             hpf: Hpf::new(f, Self::PILOT_FREQ, Hpf::Q),
             notch: Notch::new(f, Self::PILOT_FREQ, Notch::BW),
@@ -95,12 +85,7 @@ impl RestoreSignal {
             de_emphasis_info: [FilterInfo::default(); 2],
         }
     }
-    pub fn process(
-        &mut self,
-        signal: &[f64],
-        l_buffer: &mut [f64],
-        r_buffer: &mut [f64],
-    ) {
+    pub fn process(&mut self, signal: &[f64], l_buffer: &mut [f64], r_buffer: &mut [f64]) {
         // println!("Restore LPF-Coeff: {:?}",self.lpf16);
         // println!("Restore HPF-Coeff: {:?}",self.hpf);
         // println!("Restore NOTCH-Coeff: {:?}",self.notch);
@@ -129,10 +114,9 @@ impl RestoreSignal {
                 .process_without_buffer(remove_pilot, &mut self.filter_info[1]); // L+R
                                                                                  // remove_pilot
             let b = self.lpf16.process_without_buffer(
-                self.hpf.process_without_buffer(
-                    remove_pilot,
-                    &mut self.filter_info[3],
-                ) * -2.
+                self.hpf
+                    .process_without_buffer(remove_pilot, &mut self.filter_info[3])
+                    * -2.
                     * sin,
                 &mut self.filter_info[2],
             ); // L-R

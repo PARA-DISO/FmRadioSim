@@ -1,11 +1,13 @@
 // use dasp_ring_buffer::Fixed as RingBuffer;
+use buffer::FixedLenBuffer;
 use fm_core::{sharable, FmRadioSim, Shareable};
 use nih_plug::prelude::*;
 // use parking_lot::Mutex;
 use std::{
     collections::VecDeque,
     net::UdpSocket,
-    sync::{Arc, Barrier, Condvar, Mutex},
+    sync::{mpsc, Arc, Barrier, Condvar, Mutex},
+    thread::JoinHandle,
     time::Duration,
 };
 // Debug
@@ -13,11 +15,13 @@ use std::{
 // use libudprint::{init};
 
 struct FmSim {
-    socket: Option<UdpSocket>,
+    socket: Arc<Mutex<Option<UdpSocket>>>,
     params: Arc<FmParams>,
-    fmradio: Shareable<FmRadioSim>,
-    input_buffer: Shareable<[VecDeque<f32>; 2]>,
-    output_buffer: Shareable<[VecDeque<f32>; 2]>,
+    // fmradio: Shareable<FmRadioSim>,
+    input_buffer: Shareable<[FixedLenBuffer; 2]>,
+    output_buffer: Shareable<[FixedLenBuffer; 2]>,
+    // input_buffer: Shareable<[VecDeque<f32>; 2]>,
+    // output_buffer: Shareable<[VecDeque<f32>; 2]>,
     // tmp_buffer_l: Vec<f32>,
     // tmp_buffer_r: Vec<f32>,
     // buf_l: VecDeque<f32>,
@@ -27,6 +31,14 @@ struct FmSim {
     //
     input_signal_wait: Arc<Barrier>,
     output_signal_wait: Arc<Barrier>,
+    start_barrier: Arc<Condvar>,
+    //
+    is_init: bool,
+    //
+    msg_sender: Option<mpsc::Sender<usize>>,
+    // msg_receiver: Option<mpsc::Receiver<usize>>,
+    //
+    handle: Option<JoinHandle<i32>>,
 }
 
 /// The [`Params`] derive macro gathers all of the information needed for the wrapper to know about
@@ -76,7 +88,7 @@ struct ArrayParams {
 impl Default for FmSim {
     fn default() -> Self {
         Self {
-            socket: None,
+            socket: Arc::new(Mutex::new(None)),
             params: Arc::new(FmParams::default()),
             sample_rate: 44100.,
             buffer_size: Self::DEFAULT_BUFFER_SIZE,
@@ -84,47 +96,60 @@ impl Default for FmSim {
             // tmp_buffer_r: vec![0.; Self::DEFAULT_BUFFER_SIZE],
             // buf_l: VecDeque::from([0f32; 4096]),
             // buf_r: VecDeque::from([0f32; 4096]),
+            // input_buffer: sharable!([
+            //     VecDeque::<f32>::with_capacity(
+            //         Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+            //     ),
+            //     VecDeque::<f32>::with_capacity(
+            //         Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+            //     )
+            // ]),
+            // output_buffer: sharable!([
+            //     VecDeque::<f32>::with_capacity(
+            //         Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+            //     ),
+            //     VecDeque::<f32>::with_capacity(
+            //         Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
+            //     )
+            // ]),
             input_buffer: sharable!([
-                VecDeque::<f32>::with_capacity(
-                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
-                ),
-                VecDeque::<f32>::with_capacity(
-                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
-                )
+                FixedLenBuffer::new(Self::DEFAULT_BUFFER_SIZE, Self::RING_BUFFER_SIZE).unwrap(),
+                FixedLenBuffer::new(Self::DEFAULT_BUFFER_SIZE, Self::RING_BUFFER_SIZE).unwrap()
             ]),
             output_buffer: sharable!([
-                VecDeque::<f32>::with_capacity(
-                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
-                ),
-                VecDeque::<f32>::with_capacity(
-                    Self::DEFAULT_BUFFER_SIZE * Self::RING_BUFFER_SIZE
-                )
+                FixedLenBuffer::new(Self::DEFAULT_BUFFER_SIZE, Self::RING_BUFFER_SIZE).unwrap(),
+                FixedLenBuffer::new(Self::DEFAULT_BUFFER_SIZE, Self::RING_BUFFER_SIZE).unwrap()
             ]),
-            fmradio: sharable!(FmRadioSim::from(
-                44100,
-                Self::DEFAULT_BUFFER_SIZE,
-                79_500_000f64,
-            )),
+            // fmradio: sharable!(FmRadioSim::from(
+            //     44100,
+            //     Self::DEFAULT_BUFFER_SIZE,
+            //     79_500_000f64,
+            // )),
             //
             // input_signal: Arc::new((Mutex::new(false), Condvar::new())),
             // output_signal: Arc::new((Mutex::new(false), Condvar::new())),
             input_signal_wait: Arc::new(Barrier::new(2)),
-            output_signal_wait: Arc::new(Barrier::new(2))
+            output_signal_wait: Arc::new(Barrier::new(2)),
+            start_barrier: Arc::new(Condvar::new()),
+            is_init: false,
+            msg_sender: None,
+            // msg_receiver: None,
+            handle: None,
         }
     }
 }
 impl FmSim {
     const DEFAULT_BUFFER_SIZE: usize = 700;
-    const RING_BUFFER_SIZE: usize = 4;
+    const RING_BUFFER_SIZE: usize = 8;
     pub fn add_socket(&mut self, ip: impl AsRef<str>) {
-        if self.socket.is_none() {
+        if self.socket.lock().unwrap().is_none() {
             let socket = UdpSocket::bind("127.0.0.1:12345").unwrap();
             socket.connect(ip.as_ref()).unwrap();
-            self.socket = Some(socket);
+            self.socket = Arc::new(Mutex::new(Some(socket)));
         }
     }
     pub fn info(&self, msg: String) {
-        if let Some(socket) = &self.socket {
+        if let Some(socket) = &*self.socket.lock().unwrap() {
             socket.send(msg.as_bytes()).unwrap();
         };
     }
@@ -200,7 +225,7 @@ impl Plugin for FmSim {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let buffer_size = buffer.samples();
+        // let buffer_size = buffer.samples();
         // if buffer_size != self.buffer_size {
         //     self.buffer_size = buffer_size;
         //     self.fmradio = FmRadioSim::from(
@@ -212,27 +237,48 @@ impl Plugin for FmSim {
         //     self.buf_l = vec![0.; buffer_size];
         //     self.buf_r = vec![0.; buffer_size];
         // }
-        self.info(String::from("start process"));
+        // self.info(String::from("start process"));
         // let (input_flag, input_sig) = &*self.input_signal;
         // let (output_flag, output_sig) = &*self.output_signal;
+        if !self.is_init {
+            self.is_init = true;
+            self.msg_sender.as_ref().unwrap().send(1).unwrap();
+            self.info(String::from("wait @ main"));
+            // self.start_barrier.wait();
+        }
         let samples = buffer.as_slice();
-        let is_input_empty = self.input_buffer.lock().unwrap()[0].is_empty();
-        self.info(String::from("process init end"));
+        // let is_input_empty = self.input_buffer.lock().unwrap()[0].is_empty();
+        // self.info(String::from("process init end"));
+        let input_is_empty = self.input_buffer.lock().unwrap()[1].is_empty();
         // 入力バッファへデータを追加
         samples
             .iter()
             .zip(self.input_buffer.lock().unwrap().iter_mut())
             .for_each(|(samples, buffer)| {
-                samples.iter().for_each(|&sample| buffer.push_back(sample));
+                buffer.enqueue(samples);
             });
-        if is_input_empty {
-          self.input_signal_wait.wait();
+        if input_is_empty {
+            self.input_signal_wait.wait();
         }
-        if is_input_empty {
-            self.info(String::from("buffer input"));
-            // *input_flag.lock().unwrap() = true;
-            // input_sig.notify_one();
+        if self.output_buffer.lock().unwrap()[1].is_empty() {
+            self.output_signal_wait.wait();
+            self.info(String::from("output buffer is empty"));
         }
+        // 出力バッファからデータを取り出す
+        samples
+            .iter_mut()
+            .zip(self.output_buffer.lock().unwrap().iter_mut())
+            .for_each(|(samples, buffer)| {
+                buffer.dequeue(samples);
+            });
+        // if is_input_empty {
+        //   self.input_signal_wait.wait();
+        // }
+        // if is_input_empty {
+        //     self.info(String::from("buffer input"));
+        //     // *input_flag.lock().unwrap() = true;
+        //     // input_sig.notify_one();
+        // }
         // write output data from buffer
         // if self.output_buffer.lock().unwrap().len() == 0 {
         //     // waiting for add samples
@@ -240,17 +286,17 @@ impl Plugin for FmSim {
         //         output_sig.wait(output_flag.lock().unwrap()).unwrap();
         //     *flag = false;
         // }
-        if self.output_buffer.lock().unwrap()[0].is_empty(){
-          self.output_signal_wait.wait();
-        }
-        samples
-            .iter_mut()
-            .zip(self.output_buffer.lock().unwrap().iter_mut())
-            .for_each(|(samples, buffer)| {
-                samples
-                    .iter_mut()
-                    .for_each(|sample| *sample = buffer.pop_front().unwrap());
-            });
+        // if self.output_buffer.lock().unwrap()[0].is_empty(){
+        //   self.output_signal_wait.wait();
+        // }
+        // samples
+        //     .iter_mut()
+        //     .zip(self.output_buffer.lock().unwrap().iter_mut())
+        //     .for_each(|(samples, buffer)| {
+        //         samples
+        //             .iter_mut()
+        //             .for_each(|sample| *sample = buffer.pop_front().unwrap());
+        //     });
         // Below is Basic Code
 
         // std::thread::sleep(Duration::from_secs(1));
@@ -292,23 +338,28 @@ impl Plugin for FmSim {
         // init("127.0.0.1:54635", LevelFilter::Info).unwrap();
 
         if self.sample_rate != buffer_config.sample_rate {
-            self.fmradio = sharable!(FmRadioSim::from(
-                buffer_config.sample_rate as usize,
-                700,
-                79_500_000f64,
-            ));
+            // self.fmradio = sharable!(FmRadioSim::from(
+            //     buffer_config.sample_rate as usize,
+            //     700,
+            //     79_500_000f64,
+            // ));
 
-            self.sample_rate = buffer_config.sample_rate;
+            // self.sample_rate = buffer_config.sample_rate;
         }
-        if let Ok(mut buf) = self.output_buffer.lock() {
-            // バッファの0埋め
-            let size = buf[0].capacity();
-            for _ in 0..(size - buf[0].len()) {
-                buf[0].push_back(0.);
-                buf[1].push_back(0.);
-            }
+        let (tx, rx) = mpsc::channel::<usize>();
+        self.msg_sender = Some(tx);
+        // if let Ok(mut buf) = self.output_buffer.lock() {
+        //     // バッファの0埋め
+        //     let size = buf[0].capacity();
+        //     for _ in 0..(size - buf[0].len()) {
+        //         buf[0].push_back(0.);
+        //         buf[1].push_back(0.);
+        //     }
+        // }
+        if let Ok(buf) = &mut self.output_buffer.lock() {
+            buf[0].set_pos(3);
+            buf[1].set_pos(3);
         }
-        self.fmradio.lock().unwrap().init_thread();
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
         self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
         {
@@ -318,57 +369,74 @@ impl Plugin for FmSim {
             let mut r_dst_buffer = vec![0.; self.buffer_size];
             let input_buffer = Arc::clone(&self.input_buffer);
             let output_buffer = Arc::clone(&self.output_buffer);
-            let fm_sim = Arc::clone(&self.fmradio);
+            let socket = Arc::clone(&self.socket);
+            // let fm_sim = Arc::clone(&self.fmradio);
+            // let mut fmradio = FmRadioSim::from(
+            //           self.sample_rate as usize,
+            //           Self::DEFAULT_BUFFER_SIZE,
+            //           79_500_000f64,
+            //       );
+            // fmradio.init_thread();
             // let input_signal = Arc::clone(&self.input_signal);
             // let output_signal = Arc::clone(&self.output_signal);
+            let start_barrier = Arc::clone(&self.start_barrier);
             let wait_input = Arc::clone(&self.input_signal_wait);
-            let wait_output  = Arc::clone(&self.output_signal_wait);
-            let _handle = std::thread::spawn(move || {
+            let wait_output = Arc::clone(&self.output_signal_wait);
+            //
+            let sample_rate = self.sample_rate as usize;
+            let handle = std::thread::spawn(move || {
                 // let (input_flag, input_sig) = &*input_signal;
                 // let (output_flag, output_sig) = &*output_signal;
-                
+                // let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
+                // socket.connect("127.0.0.0:54635").unwrap();
+                // socket.lock().unwrap().as_ref().unwrap().send(b"start waiting first barrier");
+                // start_barrier.wait();
+                if rx.recv().unwrap() == 0 {
+                    return 0;
+                }
+                let mut fmradio =
+                    FmRadioSim::from(sample_rate, Self::DEFAULT_BUFFER_SIZE, 79_500_000f64);
+                fmradio.init_thread();
+                socket
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .send(b"start processing thread");
                 loop {
-                    // while input_buffer.lock().unwrap().is_empty() {}
-                    if input_buffer.lock().unwrap()[0].is_empty() {
-                      wait_input.wait();
+                    // while  {}
+                    {
+                        if input_buffer.lock().unwrap()[1].is_empty() {
+                            wait_input.wait();
+                            // socket.lock().unwrap().as_ref().unwrap().send(b"input buffer is empty");
+                        }
+                        let mut inputs = input_buffer.lock().unwrap();
+                        inputs[0].dequeue(&mut l_buffer);
+                        inputs[1].dequeue(&mut r_buffer);
                     }
-                    // if input_buffer.lock().unwrap().is_empty() {
-                    //     // waiting for add samples
-                    //     let mut flag =
-                    //         input_sig.wait(input_flag.lock().unwrap()).unwrap();
-                    //     *flag = false;
-                    // }
-                    let mut inputs = input_buffer.lock().unwrap();
-                  // Bello Code is not Work. maybe popping for empty buffer
-                    l_buffer.iter_mut().zip(r_buffer.iter_mut()).for_each(
-                        |(l, r)| {
-                            *l = inputs[0].pop_front().unwrap_or_default();
-                            *r = inputs[1].pop_front().unwrap_or_default();
-                        },
-                    );
-                    fm_sim.lock().unwrap().process(
-                        &l_buffer,
-                        &r_buffer,
-                        &mut l_dst_buffer,
-                        &mut r_dst_buffer,
-                    );
+                    // Bello Code is not Work. maybe popping for empty buffer
+                    // [&l_buffer,&r_buffer].iter().zip([
+                    //   &mut l_dst_buffer,&mut r_dst_buffer
+                    // ].iter_mut()).for_each(
+                    //     |(src, dst)| {
+                    //       dst.iter_mut().zip(src.iter()).for_each(|(d,s)| {
+                    //         *d = 2. * *s;
+                    //       });
+                    //     },
+                    // );
+                    fmradio.process(&l_buffer, &r_buffer, &mut l_dst_buffer, &mut r_dst_buffer);
                     {
                         let mut buffer = output_buffer.lock().unwrap();
-                        let is_buffer_empty = buffer[0].is_empty();
-                        l_dst_buffer.iter().zip(r_dst_buffer.iter()).for_each(
-                            |(l, r)| {
-                                buffer[0].push_back(*l);
-                                buffer[1].push_back(*r);
-                            },
-                        );
-                        if is_buffer_empty {
-                            // *output_flag.lock().unwrap() = true;
-                            // output_sig.notify_one();
+                        let is_empty = buffer[1].is_empty();
+                        buffer[0].enqueue(&l_dst_buffer);
+                        buffer[1].enqueue(&r_dst_buffer);
+                        if is_empty {
                             wait_output.wait();
                         }
                     }
                 }
             });
+            self.handle = Some(handle);
         }
         self.info(format!("Initialized end"));
         true
@@ -376,14 +444,17 @@ impl Plugin for FmSim {
     // This can be used for cleaning up special resources like socket connections whenever the
     // plugin is deactivated. Most plugins won't need to do anything here.
     fn deactivate(&mut self) {
-      self.info(format!("call deactivate"));
+        self.info(format!("call deactivate"));
+        self.msg_sender.as_ref().unwrap().send(0);
+        if let Some(handle) = &self.handle {
+            // handle.close();
+        }
     }
 }
 
 impl ClapPlugin for FmSim {
     const CLAP_ID: &'static str = "com.moist-plugins-gmbh.gain";
-    const CLAP_DESCRIPTION: Option<&'static str> =
-        Some("A smoothed gain parameter example plugin");
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("A smoothed gain parameter example plugin");
     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
     const CLAP_SUPPORT_URL: Option<&'static str> = None;
     const CLAP_FEATURES: &'static [ClapFeature] = &[

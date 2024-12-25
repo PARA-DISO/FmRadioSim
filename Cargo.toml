@@ -17,12 +17,13 @@ codegen-units = 1
 panic = "abort"
 [workspace]
 member=["fm-core"]
-members = ["gui_test"]
+members = [ "buffer","gui_test"]
 # [build-dependencies]
 # cc = "1.1.31"
 
 [dependencies]
-fm-core={path = "fm-core"}
+fm-core = {path = "fm-core"}
+buffer = {path="buffer"}
 # VST
 nih_plug={git="https://github.com/robbert-vdh/nih-plug"}
 # simple-logging = "2.0.2"

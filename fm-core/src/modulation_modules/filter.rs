@@ -36,9 +36,7 @@ impl Lpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
@@ -53,24 +51,17 @@ impl Lpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
             o1 = buffer[i];
         }
     }
-    pub fn process_without_buffer(
-        &self,
-        signal: f64,
-        info: &mut FilterInfo,
-    ) -> f64 {
+    pub fn process_without_buffer(&self, signal: f64, info: &mut FilterInfo) -> f64 {
         let [in1, in2, out1, out2] = info;
-        let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
-            - self.c3 * *out1
-            - self.c4 * *out2;
+        let buf =
+            self.c0 * signal + self.c1 * *in1 + self.c2 * *in2 - self.c3 * *out1 - self.c4 * *out2;
         *info = [signal, *in1, buf, *out1];
         buf
     }
@@ -110,9 +101,7 @@ impl Hpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
@@ -126,24 +115,17 @@ impl Hpf {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
             o1 = buffer[i];
         }
     }
-    pub fn process_without_buffer(
-        &mut self,
-        signal: f64,
-        info: &mut FilterInfo,
-    ) -> f64 {
+    pub fn process_without_buffer(&mut self, signal: f64, info: &mut FilterInfo) -> f64 {
         let [in1, in2, out1, out2] = info;
-        let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
-            - self.c3 * *out1
-            - self.c4 * *out2;
+        let buf =
+            self.c0 * signal + self.c1 * *in1 + self.c2 * *in2 - self.c3 * *out1 - self.c4 * *out2;
         *info = [signal, *in1, buf, *out1];
         buf
     }
@@ -161,8 +143,7 @@ impl Bpf {
     pub const Q: f64 = FRAC_1_SQRT_2;
     pub fn new(sample_rate: f64, cut_off: f64, bw: f64) -> Bpf {
         let omega = TAU * dbg!(cut_off) / dbg!(sample_rate);
-        let alpha = (omega).sin()
-            * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
+        let alpha = (omega).sin() * ((2f64).ln() / 2.0 * bw * omega / omega.sin()).sinh();
 
         let a0 = 1.0 + alpha;
         let a1 = -2.0 * omega.cos();
@@ -208,8 +189,7 @@ impl Notch {
     pub const BW: f64 = 0.3;
     pub fn new(sample_rate: f64, cutoff: f64, bw: f64) -> Self {
         let omega = TAU * cutoff / sample_rate;
-        let alpha = omega.sin()
-            * (std::f64::consts::LN_2 / 2f64 * bw * omega / omega.sin()).sinh();
+        let alpha = omega.sin() * (std::f64::consts::LN_2 / 2f64 * bw * omega / omega.sin()).sinh();
         let a0 = 1f64 + alpha;
         let a1 = -2f64 * omega.cos();
         let a2 = 1f64 - alpha;
@@ -231,9 +211,7 @@ impl Notch {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            signal[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
@@ -247,24 +225,17 @@ impl Notch {
         let mut o2 = 0.;
         for i in 0..signal.len() {
             let x = signal[i];
-            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2
-                - self.c3 * o1
-                - self.c4 * o2;
+            buffer[i] = self.c0 * x + self.c1 * i1 + self.c2 * i2 - self.c3 * o1 - self.c4 * o2;
             i2 = i1;
             i1 = x;
             o2 = o1;
             o1 = buffer[i];
         }
     }
-    pub fn process_without_buffer(
-        &mut self,
-        signal: f64,
-        info: &mut FilterInfo,
-    ) -> f64 {
+    pub fn process_without_buffer(&mut self, signal: f64, info: &mut FilterInfo) -> f64 {
         let [in1, in2, out1, out2] = info;
-        let buf = self.c0 * signal + self.c1 * *in1 + self.c2 * *in2
-            - self.c3 * *out1
-            - self.c4 * *out2;
+        let buf =
+            self.c0 * signal + self.c1 * *in1 + self.c2 * *in2 - self.c3 * *out1 - self.c4 * *out2;
         *info = [signal, *in1, buf, *out1];
         buf
     }
@@ -281,16 +252,11 @@ impl Emphasis {
         let coeff_rev = 1. / coeff;
         Self {
             a0: coeff_rev,
-            a1: -coeff_rev * (2. * tau - sample_rate)
-                / (2. * tau + sample_rate),
+            a1: -coeff_rev * (2. * tau - sample_rate) / (2. * tau + sample_rate),
             b0: 1.,
         }
     }
-    pub fn process_without_buffer(
-        &self,
-        signal: f64,
-        info: &mut FilterInfo,
-    ) -> f64 {
+    pub fn process_without_buffer(&self, signal: f64, info: &mut FilterInfo) -> f64 {
         let [in1, _, out1, _] = info;
         let buf = self.a0 * signal + self.a1 * *in1 - self.b0 * *out1;
         *info = [signal, *in1, buf, *out1];
@@ -312,11 +278,7 @@ impl Deemphasis {
             b0: (2. * tau - sample_rate) / (2. * tau + sample_rate),
         }
     }
-    pub fn process_without_buffer(
-        &self,
-        signal: f64,
-        info: &mut FilterInfo,
-    ) -> f64 {
+    pub fn process_without_buffer(&self, signal: f64, info: &mut FilterInfo) -> f64 {
         let [in1, _, out1, _] = info;
         let buf = self.a0 * signal + self.a1 * *in1 + self.b0 * *out1;
         *info = [signal, *in1, buf, *out1];

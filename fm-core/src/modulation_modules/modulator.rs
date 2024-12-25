@@ -20,10 +20,7 @@ pub struct CnvFiInfos {
 impl CnvFiInfos {
     pub fn new(fs: f64, delta_angle: f64, cut_off: f64) -> Self {
         Self {
-            filter_coeff: dbg!(fast_filter::get_lpf_coeff(
-                dbg!(fs),
-                dbg!(cut_off)
-            )),
+            filter_coeff: dbg!(fast_filter::get_lpf_coeff(dbg!(fs), dbg!(cut_off))),
             // filter_coeff: Lpf::new(fs,cut_off,Lpf::Q),
             // angle: [-delta_angle, 0., delta_angle, 2. * delta_angle],
             angle: [0., delta_angle, 2. * delta_angle, 3. * delta_angle],
@@ -70,11 +67,7 @@ impl CvtIntermediateFreq {
             fc1,
             fc2,
             sample_periodic: 1. / fs,
-            info: CnvFiInfos::new(
-                fs * 2.,
-                1. / fs * TAU * (dbg!(fc1 - fc2)),
-                fc2 * 2.,
-            ),
+            info: CnvFiInfos::new(fs * 2., 1. / fs * TAU * (dbg!(fc1 - fc2)), fc2 * 2.),
         }
     }
     pub fn process(&mut self, input: &[f64], dst: &mut [f64]) {

@@ -3,8 +3,7 @@ use iced::time;
 use iced::{
     executor,
     widget::{Column, Container, Text},
-    Alignment, Application, Command, Element, Length, Settings, Subscription,
-    Theme,
+    Alignment, Application, Command, Element, Length, Settings, Subscription, Theme,
 };
 use plotters::{coord::Shift, prelude::*};
 use plotters_iced::{Chart, ChartWidget};
@@ -131,8 +130,7 @@ impl MyChart {
             "Signal time per frame: {}ms",
             (BUFFER_SIZE as f64) / AUDIO_SAMPLE_RATE as f64 * 1000f64
         );
-        let mut fm_radio_sim =
-            FmRadioSim::from(AUDIO_SAMPLE_RATE, BUFFER_SIZE, CARRIER_FREQ);
+        let mut fm_radio_sim = FmRadioSim::from(AUDIO_SAMPLE_RATE, BUFFER_SIZE, CARRIER_FREQ);
         fm_radio_sim.init_thread();
         Self {
             render_times: 0,
@@ -164,19 +162,12 @@ impl MyChart {
             // 信号の作成
             if !self.disable_audio_in {
                 for i in 0..self.input_signal[0].len() {
-                    self.input_signal[0][i] = (self.t as f32
-                        * 2.
-                        * std::f32::consts::PI
-                        * SIGNAL_FREQ as f32)
-                        .sin()
-                        * A as f32;
-                    self.input_signal[1][i] = (self.t as f32
-                        * 2.
-                        * std::f32::consts::PI
-                        * SIGNAL_FREQ as f32
-                        * 2.)
-                        .sin()
-                        * A as f32;
+                    self.input_signal[0][i] =
+                        (self.t as f32 * 2. * std::f32::consts::PI * SIGNAL_FREQ as f32).sin()
+                            * A as f32;
+                    self.input_signal[1][i] =
+                        (self.t as f32 * 2. * std::f32::consts::PI * SIGNAL_FREQ as f32 * 2.).sin()
+                            * A as f32;
                     self.t += 1f64 / AUDIO_SAMPLE_RATE as f64;
                 }
             }
@@ -225,18 +216,9 @@ impl MyChart {
 impl Chart<Message> for MyChart {
     type State = ();
     // leave it empty
-    fn build_chart<DB: DrawingBackend>(
-        &self,
-        _state: &Self::State,
-        _builder: ChartBuilder<DB>,
-    ) {
-    }
+    fn build_chart<DB: DrawingBackend>(&self, _state: &Self::State, _builder: ChartBuilder<DB>) {}
 
-    fn draw_chart<DB: DrawingBackend>(
-        &self,
-        _state: &Self::State,
-        root: DrawingArea<DB, Shift>,
-    ) {
+    fn draw_chart<DB: DrawingBackend>(&self, _state: &Self::State, root: DrawingArea<DB, Shift>) {
         let children = root.split_evenly((3, 4));
 
         let labels: [&str; 12] = [
@@ -389,10 +371,7 @@ fn draw_chart<DB: DrawingBackend>(
         .caption(label, ("sans-serif", 22))
         .x_label_area_size(30)
         .y_label_area_size(30)
-        .build_cartesian_2d(
-            0f64..data.len() as f64 / sample_rate as f64,
-            -1f64..1f64,
-        )
+        .build_cartesian_2d(0f64..data.len() as f64 / sample_rate as f64, -1f64..1f64)
         .unwrap();
 
     chart
