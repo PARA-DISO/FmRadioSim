@@ -22,7 +22,7 @@ const ENABLE_MODULE_TIME: bool = false;
 const ENABLE_END_BARRIER: bool = false;
 #[link(name = "freq_modulation")]
 extern "C" {
-// extern "vectorcall" {
+    // extern "vectorcall" {
     fn fm_modulate(
         output_signal: *mut f64,
         input_signal: *const f64,
@@ -207,7 +207,8 @@ impl FmRadioSim {
             restored_signal_r: vec![0.; composite_buffer_size],
             //
             read_state: false,
-            barrier: Arc::new(Barrier::new(6)),
+            // barrier: Arc::new(Barrier::new(6)),
+            barrier: Arc::new(Barrier::new(5)),
             // barrier: Arc::new(Barrier::new(3)),
             is_init: false,
         }
@@ -334,48 +335,49 @@ impl FmRadioSim {
             });
         }
         // BPF
-        {
-            let bandpass_filter = Arc::clone(&self.bandpass_filter1);
-            let intermediate_signal_in = Arc::clone(&self.intermediate_signal1);
-            let intermediate_signal_out = Arc::clone(&self.intermediate_signal2);
-            let _ = thread::spawn(move || {
-                unsafe {
-                    set_csr(crate::utils::float::FLUSH_TO_ZERO);
-                }
-                let mut state = false;
-                let intermediate_signal = Arc::clone(&intermediate_signal_in);
-                let intermediate_signal_out = Arc::clone(&intermediate_signal_out);
+        // {
+        //     let bandpass_filter = Arc::clone(&self.bandpass_filter1);
+        //     let intermediate_signal_in = Arc::clone(&self.intermediate_signal1);
+        //     let intermediate_signal_out = Arc::clone(&self.intermediate_signal2);
+        //     let _ = thread::spawn(move || {
+        //         unsafe {
+        //             set_csr(crate::utils::float::FLUSH_TO_ZERO);
+        //         }
+        //         let mut state = false;
+        //         let intermediate_signal = Arc::clone(&intermediate_signal_in);
+        //         let intermediate_signal_out = Arc::clone(&intermediate_signal_out);
 
-                loop {
-                    listener2.wait();
-                    let start = Instant::now();
-                    unsafe {
-                        bandpass_filter
-                            .lock()
-                            .unwrap_unchecked()
-                            .process_no_resample(
-                                &intermediate_signal[(!state) as usize]
-                                    .lock()
-                                    .unwrap_unchecked(),
-                                &mut intermediate_signal_out[state as usize]
-                                    .lock()
-                                    .unwrap_unchecked(),
-                            );
-                    }
-                    let end = start.elapsed();
-                    if ENABLE_END_BARRIER {
-                        listener2.wait();
-                    }
-                    state ^= true;
-                    if ENABLE_MODULE_TIME {
-                        println!("BPF1: {:?}", end);
-                    }
-                }
-            });
-        }
+        //         loop {
+        //             listener2.wait();
+        //             let start = Instant::now();
+        //             unsafe {
+        //                 bandpass_filter
+        //                     .lock()
+        //                     .unwrap_unchecked()
+        //                     .process_no_resample(
+        //                         &intermediate_signal[(!state) as usize]
+        //                             .lock()
+        //                             .unwrap_unchecked(),
+        //                         &mut intermediate_signal_out[state as usize]
+        //                             .lock()
+        //                             .unwrap_unchecked(),
+        //                     );
+        //             }
+        //             let end = start.elapsed();
+        //             if ENABLE_END_BARRIER {
+        //                 listener2.wait();
+        //             }
+        //             state ^= true;
+        //             if ENABLE_MODULE_TIME {
+        //                 println!("BPF1: {:?}", end);
+        //             }
+        //         }
+        //     });
+        // }
         {
             let bandpass_filter = Arc::clone(&self.bandpass_filter2);
-            let intermediate_signal_in = Arc::clone(&self.intermediate_signal2);
+            // let intermediate_signal_in = Arc::clone(&self.intermediate_signal2);
+            let intermediate_signal_in = Arc::clone(&self.intermediate_signal1);
             let intermediate_signal_out = Arc::clone(&self.intermediate_signal3);
             let _ = thread::spawn(move || {
                 unsafe {

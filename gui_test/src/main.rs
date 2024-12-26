@@ -26,7 +26,7 @@ const CARRIER_FREQ: f64 = 79_500_000f64;
 const A: f64 = 0.5;
 const RENDER_MAX: usize = 1000;
 // const RENDER_MAX: usize = 10;
-const ENABLE_PARALLEL: bool = false;
+const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
 const FIXED_RENDERING_DURATION: u64 = 16; // 1ms1

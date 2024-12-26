@@ -1,11 +1,18 @@
 use buffer::FixedLenBuffer;
 fn main() {
-    let mut buffer = FixedLenBuffer::new(4, 4).unwrap();
+    let mut buffer = FixedLenBuffer::new(4, 8).unwrap();
     let mut dst = [0.; 4];
+    buffer.set_len(2);
+    buffer.dequeue(&mut dst);
+    println!("{:?}", dst);
     buffer.enqueue(&[0., 1., 2., 3.]);
     // println!("{}", buffer.get_pos());
     buffer.enqueue(&[4., 5., 6., 7.]);
     // println!("{}", buffer.get_pos());
+    buffer.dequeue(&mut dst);
+    println!("{:?}", dst);
+    buffer.dequeue(&mut dst);
+    println!("{:?}", dst);
     buffer.dequeue(&mut dst);
     println!("{:?}", dst);
     // println!("{}", buffer.get_pos());

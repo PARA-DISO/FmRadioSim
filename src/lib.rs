@@ -4,7 +4,11 @@ use fm_core::{sharable, FmRadioSim, Shareable};
 use nih_plug::prelude::*;
 // use parking_lot::Mutex;
 use std::{
-    collections::VecDeque,
+    hint,
+    sync::atomic::{AtomicBool, Ordering},
+};
+use std::{
+    hint::spin_loop,
     net::UdpSocket,
     sync::{mpsc, Arc, Barrier, Condvar, Mutex},
     thread::JoinHandle,
@@ -29,9 +33,9 @@ struct FmSim {
     sample_rate: f32,
     buffer_size: usize,
     //
-    input_signal_wait: Arc<Barrier>,
-    output_signal_wait: Arc<Barrier>,
-    start_barrier: Arc<Condvar>,
+    input_signal_wait: Arc<AtomicBool>,
+    output_signal_wait: Arc<AtomicBool>,
+    // start_barrier: Arc<Condvar>,
     //
     is_init: bool,
     //
@@ -70,7 +74,6 @@ struct FmParams {
     // #[nested(array, group = "Array Parameters")]
     // pub array_params: [ArrayParams; 3],
 }
-
 
 impl Default for FmSim {
     fn default() -> Self {
@@ -115,9 +118,9 @@ impl Default for FmSim {
             //
             // input_signal: Arc::new((Mutex::new(false), Condvar::new())),
             // output_signal: Arc::new((Mutex::new(false), Condvar::new())),
-            input_signal_wait: Arc::new(Barrier::new(2)),
-            output_signal_wait: Arc::new(Barrier::new(2)),
-            start_barrier: Arc::new(Condvar::new()),
+            input_signal_wait: Arc::new(AtomicBool::new(false)),
+            output_signal_wait: Arc::new(AtomicBool::new(false)),
+            // start_barrier: Arc::new(Condvar::new()),
             is_init: false,
             msg_sender: None,
             // msg_receiver: None,
@@ -126,7 +129,7 @@ impl Default for FmSim {
     }
 }
 impl FmSim {
-    const DEFAULT_BUFFER_SIZE: usize = 300;
+    const DEFAULT_BUFFER_SIZE: usize = 700;
     const RING_BUFFER_SIZE: usize = 8;
     pub fn add_socket(&mut self, ip: impl AsRef<str>) {
         if self.socket.lock().unwrap().is_none() {
@@ -142,11 +145,6 @@ impl FmSim {
     }
 }
 unsafe impl Send for FmSim {}
-// impl Default for FmParams {
-//     fn default() -> Self {
-//         Self {}
-//     }
-// }
 
 impl Plugin for FmSim {
     const NAME: &'static str = "Gain";
@@ -212,31 +210,16 @@ impl Plugin for FmSim {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        // let buffer_size = buffer.samples();
-        // if buffer_size != self.buffer_size {
-        //     self.buffer_size = buffer_size;
-        //     self.fmradio = FmRadioSim::from(
-        //         self.sample_rate as usize,
-        //         buffer_size,
-        //         79_500_000f64,
-        //     );
-        //     self.fmradio.init_thread();
-        //     self.buf_l = vec![0.; buffer_size];
-        //     self.buf_r = vec![0.; buffer_size];
-        // }
-        // self.info(String::from("start process"));
-        // let (input_flag, input_sig) = &*self.input_signal;
-        // let (output_flag, output_sig) = &*self.output_signal;
         if !self.is_init {
             self.is_init = true;
             self.msg_sender.as_ref().unwrap().send(1).unwrap();
-            self.info(String::from("wait @ main"));
+            // self.info(String::from("wait @ main"));
             // self.start_barrier.wait();
         }
         let samples = buffer.as_slice();
         // let is_input_empty = self.input_buffer.lock().unwrap()[0].is_empty();
         // self.info(String::from("process init end"));
-        let input_is_empty = self.input_buffer.lock().unwrap()[1].is_empty();
+        // let input_is_empty = self.input_buffer.lock().unwrap()[1].is_empty();
         // 入力バッファへデータを追加
         samples
             .iter()
@@ -244,13 +227,21 @@ impl Plugin for FmSim {
             .for_each(|(samples, buffer)| {
                 buffer.enqueue(samples);
             });
-        if input_is_empty {
-            self.input_signal_wait.wait();
-        }
+        self.input_signal_wait.store(true, Ordering::Release);
+        // if input_is_empty {
+        //     self.info(String::from("sync input buffer @ main"));
+        //     // self.input_signal_wait.wait();
+
+        //     self.info(String::from("After input sync @ main"));
+        // }
+
         if self.output_buffer.lock().unwrap()[1].is_empty() {
-          self.info(String::from("output buffer is empty"));
-            self.output_signal_wait.wait();
-            
+            self.info(String::from("output buffer is empty"));
+            while !self.output_signal_wait.load(Ordering::Acquire) {
+                hint::spin_loop();
+            }
+            self.output_signal_wait.store(false, Ordering::Release);
+            // self.info(String::from(??"After output sync @ main"));
         }
         // 出力バッファからデータを取り出す
         samples
@@ -259,59 +250,6 @@ impl Plugin for FmSim {
             .for_each(|(samples, buffer)| {
                 buffer.dequeue(samples);
             });
-        // if is_input_empty {
-        //   self.input_signal_wait.wait();
-        // }
-        // if is_input_empty {
-        //     self.info(String::from("buffer input"));
-        //     // *input_flag.lock().unwrap() = true;
-        //     // input_sig.notify_one();
-        // }
-        // write output data from buffer
-        // if self.output_buffer.lock().unwrap().len() == 0 {
-        //     // waiting for add samples
-        //     let mut flag =
-        //         output_sig.wait(output_flag.lock().unwrap()).unwrap();
-        //     *flag = false;
-        // }
-        // if self.output_buffer.lock().unwrap()[0].is_empty(){
-        //   self.output_signal_wait.wait();
-        // }
-        // samples
-        //     .iter_mut()
-        //     .zip(self.output_buffer.lock().unwrap().iter_mut())
-        //     .for_each(|(samples, buffer)| {
-        //         samples
-        //             .iter_mut()
-        //             .for_each(|sample| *sample = buffer.pop_front().unwrap());
-        //     });
-        // Below is Basic Code
-
-        // std::thread::sleep(Duration::from_secs(1));
-        // self.info(format!("Sample Size: {buffer_size}"));
-        // self.info("Start Processing".into());
-        // self.fmradio.process(
-        //     samples[0],
-        //     samples[1],
-        //     &mut self.tmp_buffer_l,
-        //     &mut self.tmp_buffer_r,
-        // );
-        // buffer
-        //     .iter_samples()
-        //     .zip([&mut self.buf_l, &mut self.buf_r])
-        //     .for_each(|(mut dst, buf)| {
-        //         dst.iter_mut().for_each(|d| {
-        //             *d = buf.pop_front().unwrap();
-        //         });
-        //     });
-        // self.tmp_buffer_l
-        //     .iter()
-        //     .zip(self.tmp_buffer_r.iter())
-        //     .for_each(|(l, r)| {
-        //         self.buf_l.push_back(*l);
-        //         self.buf_r.push_back(*r);
-        //     });
-        // self.info(format!("Sample Size: {buffer_size}"));
         ProcessStatus::Normal
     }
     fn initialize(
@@ -336,73 +274,54 @@ impl Plugin for FmSim {
         }
         let (tx, rx) = mpsc::channel::<usize>();
         self.msg_sender = Some(tx);
-        // if let Ok(buf) = &mut self.output_buffer.lock() {
-        //     buf[0].set_pos(3);
-        //     buf[1].set_pos(3);
-        // }
+        if let Ok(buf) = &mut self.output_buffer.lock() {
+            buf[0].set_len(4);
+            buf[1].set_len(4);
+        }
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
         self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
         {
-            let mut l_buffer = vec![0.; self.buffer_size];
-            let mut r_buffer = vec![0.; self.buffer_size];
-            let mut l_dst_buffer = vec![0.; self.buffer_size];
-            let mut r_dst_buffer = vec![0.; self.buffer_size];
             let input_buffer = Arc::clone(&self.input_buffer);
             let output_buffer = Arc::clone(&self.output_buffer);
             let socket = Arc::clone(&self.socket);
-            // let fm_sim = Arc::clone(&self.fmradio);
-            // let mut fmradio = FmRadioSim::from(
-            //           self.sample_rate as usize,
-            //           Self::DEFAULT_BUFFER_SIZE,
-            //           79_500_000f64,
-            //       );
-            // fmradio.init_thread();
-            // let input_signal = Arc::clone(&self.input_signal);
-            // let output_signal = Arc::clone(&self.output_signal);
-            let _start_barrier = Arc::clone(&self.start_barrier);
+            // let _start_barrier = Arc::clone(&self.start_barrier);
             let wait_input = Arc::clone(&self.input_signal_wait);
             let wait_output = Arc::clone(&self.output_signal_wait);
             //
+            let buffer_size = self.buffer_size;
             let sample_rate = self.sample_rate as usize;
             let handle = std::thread::spawn(move || {
+                let send_msg = |msg: &[u8]| {
+                    socket.lock().unwrap().as_ref().unwrap().send(msg).unwrap();
+                };
+                let mut l_buffer = vec![0.; buffer_size];
+                let mut r_buffer = vec![0.; buffer_size];
+                let mut l_dst_buffer = vec![0.; buffer_size];
+                let mut r_dst_buffer = vec![0.; buffer_size];
                 // let (input_flag, input_sig) = &*input_signal;
                 // let (output_flag, output_sig) = &*output_signal;
-                // let socket = UdpSocket::bind("127.0.0.1:0").unwrap();
-                // socket.connect("127.0.0.0:54635").unwrap();
-                // socket.lock().unwrap().as_ref().unwrap().send(b"start waiting first barrier");
-                // start_barrier.wait();
+
                 if rx.recv().unwrap() == 0 {
                     return 0;
                 }
                 let mut fmradio =
                     FmRadioSim::from(sample_rate, Self::DEFAULT_BUFFER_SIZE, 79_500_000f64);
                 fmradio.init_thread();
-                let _ = socket
-                    .lock()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .send(b"start processing thread");
+                send_msg(b"start processing thread");
                 loop {
                     // while  {}
                     {
-                        if input_buffer.lock().unwrap()[1].is_empty() {
-                            wait_input.wait();
-                            // socket.lock().unwrap().as_ref().unwrap().send(b"input buffer is empty");
+                        while !wait_input.load(Ordering::Acquire) {
+                            hint::spin_loop();
                         }
+                        wait_input.store(false, Ordering::Release);
                         let mut inputs = input_buffer.lock().unwrap();
-                        let _ = socket
-                        .lock()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .send(format!("input buffer len: {:?}",inputs[1].get_pos()
-                      ).as_bytes());
-                        
+                        // send_msg(format!("input buffer len: {:?}", inputs[1].get_len()).as_bytes());
+
                         inputs[0].dequeue(&mut l_buffer);
                         inputs[1].dequeue(&mut r_buffer);
                     }
-                    // Bello Code is not Work. maybe popping for empty buffer
+                    // Note: [TEST] gain code
                     // [&l_buffer,&r_buffer].iter().zip([
                     //   &mut l_dst_buffer,&mut r_dst_buffer
                     // ].iter_mut()).for_each(
@@ -412,24 +331,31 @@ impl Plugin for FmSim {
                     //       });
                     //     },
                     // );
+                    // Note: FM SIM CODE
                     // let start = Instant::now();
                     fmradio.process(&l_buffer, &r_buffer, &mut l_dst_buffer, &mut r_dst_buffer);
                     // let end = start.elapsed();
                     {
                         let mut buffer = output_buffer.lock().unwrap();
-                        let _ = socket
-                        .lock()
-                        .unwrap()
-                        .as_ref()
-                        .unwrap()
-                        .send(format!("output buffer len: {:?}",buffer[1].get_pos()
-                      ).as_bytes());
-                        let is_empty = buffer[1].is_empty();
+                        // send_msg(
+                        //     format!("output buffer len: {:?}", buffer[1].get_len()).as_bytes(),
+                        // );
+                        // let is_empty = buffer[1].is_empty();
                         buffer[0].enqueue(&l_dst_buffer);
-                        buffer[1].enqueue(&r_dst_buffer);
-                        if is_empty {
-                            wait_output.wait();
-                        }
+                        if !buffer[1].enqueue(&r_dst_buffer) {
+                            send_msg(b"output buffer is full");
+                        };
+                        wait_output.store(true, Ordering::Release);
+                        // if is_empty {
+                        //     send_msg(b"sync out-buffer @ processing thread");
+                        //     // wait_output.wait();
+                        //     send_msg(b"sync after out-buffer @ processing thread");
+                        // } else {
+                        //     send_msg(
+                        //         format!("output buffer len: {:?}", buffer[1].get_len()).as_bytes(),
+                        //     );
+                        //     // wait_output.wait();
+                        // }
                     }
                     // let _ = socket
                     // .lock()
