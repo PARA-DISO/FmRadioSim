@@ -148,11 +148,11 @@ unsafe impl Send for FmSim {}
 
 impl Plugin for FmSim {
     const NAME: &'static str = "FM Radio";
-    const VENDOR: &'static str = "Moist Plugins GmbH";
+    const VENDOR: &'static str = "PARADISO";
     // You can use `env!("CARGO_PKG_HOMEPAGE")` to reference the homepage field from the
     // `Cargo.toml` file here
-    const URL: &'static str = "https://youtu.be/dQw4w9WgXcQ";
-    const EMAIL: &'static str = "info@example.com";
+    const URL: &'static str = "https://github.com/PARA-DISO";
+    const EMAIL: &'static str = "paradiso@ymail.ne.jp";
 
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
@@ -382,24 +382,23 @@ impl Plugin for FmSim {
     }
 }
 
-impl ClapPlugin for FmSim {
-    const CLAP_ID: &'static str = "com.moist-plugins-gmbh.gain";
-    const CLAP_DESCRIPTION: Option<&'static str> = Some("A smoothed gain parameter example plugin");
-    const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
-    const CLAP_SUPPORT_URL: Option<&'static str> = None;
-    const CLAP_FEATURES: &'static [ClapFeature] = &[
-        ClapFeature::AudioEffect,
-        ClapFeature::Stereo,
-        ClapFeature::Mono,
-        ClapFeature::Utility,
-    ];
-}
+// impl ClapPlugin for FmSim {
+//     const CLAP_ID: &'static str = "com.moist-plugins-gmbh.gain";
+//     const CLAP_DESCRIPTION: Option<&'static str> = Some("A smoothed gain parameter example plugin");
+//     const CLAP_MANUAL_URL: Option<&'static str> = Some(Self::URL);
+//     const CLAP_SUPPORT_URL: Option<&'static str> = None;
+//     const CLAP_FEATURES: &'static [ClapFeature] = &[
+//         ClapFeature::AudioEffect,
+//         ClapFeature::Stereo,
+//         ClapFeature::Mono,
+//         ClapFeature::Utility,
+//     ];
+// }
 
 impl Vst3Plugin for FmSim {
-    const VST3_CLASS_ID: [u8; 16] = *b"GainMoistestPlug";
+    const VST3_CLASS_ID: [u8; 16] = *b"FMRadioSimPlugin";
     const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
         &[Vst3SubCategory::Fx, Vst3SubCategory::Tools];
 }
 
-nih_export_clap!(FmSim);
 nih_export_vst3!(FmSim);
