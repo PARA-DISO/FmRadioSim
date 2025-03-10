@@ -259,7 +259,7 @@ impl Plugin for FmSim {
         _context: &mut impl InitContext<Self>,
     ) -> bool {
         /* Add input/output Buffer */
-        self.add_socket("127.0.0.1:54635");
+        // self.add_socket("127.0.0.1:54635");
         // simple_logging::log_to_file("./fmradio.log", log::LevelFilter::Info).unwrap();
         // init("127.0.0.1:54635", LevelFilter::Info).unwrap();
 
@@ -283,7 +283,7 @@ impl Plugin for FmSim {
         {
             let input_buffer = Arc::clone(&self.input_buffer);
             let output_buffer = Arc::clone(&self.output_buffer);
-            let socket = Arc::clone(&self.socket);
+            // let socket = Arc::clone(&self.socket);
             // let _start_barrier = Arc::clone(&self.start_barrier);
             let wait_input = Arc::clone(&self.input_signal_wait);
             let wait_output = Arc::clone(&self.output_signal_wait);
@@ -291,9 +291,9 @@ impl Plugin for FmSim {
             let buffer_size = self.buffer_size;
             let sample_rate = self.sample_rate as usize;
             let handle = std::thread::spawn(move || {
-                let send_msg = |msg: &[u8]| {
-                    socket.lock().unwrap().as_ref().unwrap().send(msg).unwrap();
-                };
+                // let send_msg = |msg: &[u8]| {
+                //     socket.lock().unwrap().as_ref().unwrap().send(msg).unwrap();
+                // };
                 let mut l_buffer = vec![0.; buffer_size];
                 let mut r_buffer = vec![0.; buffer_size];
                 let mut l_dst_buffer = vec![0.; buffer_size];
@@ -307,7 +307,7 @@ impl Plugin for FmSim {
                 let mut fmradio =
                     FmRadioSim::from(sample_rate, Self::DEFAULT_BUFFER_SIZE, 79_500_000f64);
                 fmradio.init_thread();
-                send_msg(b"start processing thread");
+                // send_msg(b"start processing thread");
                 loop {
                     // while  {}
                     {
@@ -342,9 +342,9 @@ impl Plugin for FmSim {
                         // );
                         // let is_empty = buffer[1].is_empty();
                         buffer[0].enqueue(&l_dst_buffer);
-                        if !buffer[1].enqueue(&r_dst_buffer) {
-                            send_msg(b"output buffer is full");
-                        };
+                        // if !buffer[1].enqueue(&r_dst_buffer) {
+                        //     send_msg(b"output buffer is full");
+                        // };
                         wait_output.store(true, Ordering::Release);
                         // if is_empty {
                         //     send_msg(b"sync out-buffer @ processing thread");
