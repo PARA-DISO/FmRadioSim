@@ -1,6 +1,7 @@
 #pragma once
 #include "rstype.h"
 #include <immintrin.h>
+#define __SVML
 #define ENABLE_UPSAMPLING 0
 #define TEST_CODE false
 #define DISABLE_SIMD_DEMODULATE 0

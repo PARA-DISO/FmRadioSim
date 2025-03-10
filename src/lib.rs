@@ -147,7 +147,7 @@ impl FmSim {
 unsafe impl Send for FmSim {}
 
 impl Plugin for FmSim {
-    const NAME: &'static str = "Gain";
+    const NAME: &'static str = "FM Radio";
     const VENDOR: &'static str = "Moist Plugins GmbH";
     // You can use `env!("CARGO_PKG_HOMEPAGE")` to reference the homepage field from the
     // `Cargo.toml` file here

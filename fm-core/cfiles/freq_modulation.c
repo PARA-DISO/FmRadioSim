@@ -1,4 +1,5 @@
 #include "./freq_modulation.h"
+#include "trigo.h"
 
 #ifdef ENABLE_DEBUG_UTILS
 #include <math.h>
@@ -194,7 +195,11 @@ void fm_modulate(f64 *restrict output_signal, const f64 *restrict input_signal,
         _mm256_cvtsd_f64(_mm256_permute_pd(sums, _MM_SHUFFLE(3, 1, 2, 3)));
     f64x4 integral = _mm256_fmadd_pd(coeff, sums, angle);
     // 変調
+    #ifdef __SVML
     f64x4 sigs = _mm256_cos_pd(integral);
+    #else
+    f64x4 sigs = _mm256_fcos_pd(integral);
+    #endif
     _mm256_store_pd(output_signal + i, sigs);
     angle = _mm256_add_pd(angle, phi);
   }
@@ -215,9 +220,15 @@ void fm_modulate(f64 *restrict output_signal, const f64 *restrict input_signal,
     f64x4 angle_tmp = _mm256_add_pd(angle2, phi);
     f64x4 modulated_angle1 = _mm256_fmadd_pd(coeff, s1_in, angle);
     f64x4 modulated_angle2 = _mm256_fmadd_pd(coeff, s2_in, angle2);
-
+    #ifdef __SVML
     f64x4 cos_value1 = _mm256_cos_pd(modulated_angle1);
     f64x4 cos_value2 = _mm256_cos_pd(modulated_angle2);
+    #else
+    f64x4 cos_value1 = _mm256_fcos_pd(modulated_angle1);
+    f64x4 cos_value2 = _mm256_fcos_pd(modulated_angle2);
+    #endif
+
+    
     // f64x4 cos_value1 = _mm256_cos_pd(angle);
     // f64x4 cos_value2 = _mm256_cos_pd(angle2);
     _mm256_store_pd(output_signal + i, cos_value1);
@@ -480,10 +491,18 @@ void convert_intermediate_freq(f64 output_signal[], const f64 input_signal[],
   f64x4 full_delta_angle = _mm256_set1_pd(info->delta_angle * 4);
 #pragma unroll
   for (usize i = 0, j = 0; i < buf_len; i += 8) {
-    f64x4 cos_value1 = _mm256_cos_pd(angle);
+    #ifdef __SVML
+f64x4 cos_value1 = _mm256_cos_pd(angle);
     angle = _mm256_add_pd(angle, full_delta_angle);
     f64x4 cos_value2 = _mm256_cos_pd(angle);
     angle = _mm256_add_pd(angle, full_delta_angle);
+    #else
+f64x4 cos_value1 = _mm256_fcos_pd(angle);
+    angle = _mm256_add_pd(angle, full_delta_angle);
+    f64x4 cos_value2 = _mm256_fcos_pd(angle);
+    angle = _mm256_add_pd(angle, full_delta_angle);
+    #endif
+    
     f64x4 signal1 = _mm256_load_pd(input_signal + i);     // 0 1 2 3
     f64x4 signal2 = _mm256_load_pd(input_signal + i + 4); // 0 1 2 3
     f64x4 sig1 = _mm256_mul_pd(signal1, cos_value1);
@@ -654,7 +673,7 @@ void fm_demodulate(f64 output_signal[], const f64 input_signal[],
     f64x4 sig_out = _mm256_hsub_pd(ta, tb);
     // _mm256_store_pd(output_signal+i,test_point2);
     _mm256_store_pd(output_signal + i,
-                    _mm256_mul_pd(_mm256_set1_pd(4), sig_out));
+                    _mm256_mul_pd(_mm256_set1_pd(1), sig_out));
     // move value for next loop
     prev_sig_lo = _mm256_permute2f128_pd(o0, o2, 0x20);
     prev_sig_hi = _mm256_permute2f128_pd(o1, o3, 0x20);

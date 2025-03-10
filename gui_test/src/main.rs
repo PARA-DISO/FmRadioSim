@@ -24,8 +24,8 @@ const SIGNAL_FREQ: f64 = 440f64;
 const CARRIER_FREQ: f64 = 79_500_000f64;
 // const CARRIER_FREQ: f64 = 440f64;
 const A: f64 = 0.5;
-const RENDER_MAX: usize = 1000;
-// const RENDER_MAX: usize = 10;
+// const RENDER_MAX: usize = 1000;
+const RENDER_MAX: usize = 10;
 const ENABLE_PARALLEL: bool = true;
 // is modulate audio sig
 const DISABLE_AUDIO_INPUT: bool = false;
@@ -238,74 +238,74 @@ impl Chart<Message> for MyChart {
         for (i, area) in children.iter().enumerate() {
             let builder = ChartBuilder::on(area);
             match i {
-                // 0 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     &self.input_signal[0]
-                //         .iter()
-                //         .map(|x| *x as f64)
-                //         .collect::<Vec<_>>(),
-                //     AUDIO_SAMPLE_RATE,
-                // ),
-                // 1 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     &self.input_signal[1]
-                //         .iter()
-                //         .map(|x| *x as f64)
-                //         .collect::<Vec<_>>(),
-                //     AUDIO_SAMPLE_RATE,
-                // ),
-                // 2 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim
-                //         .get_composite()
-                //         .iter()
-                //         .take(2048)
-                //         .copied()
-                //         .collect::<Vec<f64>>()
-                //         .as_slice(),
-                //     FmRadioSim::COMPOSITE_SAMPLE_RATE,
-                // ),
-                // 3 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim
-                //         .get_modulate()
-                //         .iter()
-                //         .take(1024)
-                //         .copied()
-                //         .collect::<Vec<f64>>()
-                //         .as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE,
-                // ),
-                // 4 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim
-                //         .get_intermediate()
-                //         .iter()
-                //         .take(2048)
-                //         .copied()
-                //         .collect::<Vec<f64>>()
-                //         .as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                // ),
-                // 5 => draw_chart(
-                //     builder,
-                //     labels[i],
-                //     self.fm_radio_sim
-                //         .get_demodulate()
-                //         .iter()
-                //         .take(2048)
-                //         .copied()
-                //         .collect::<Vec<f64>>()
-                //         .as_slice(),
-                //     FmRadioSim::FM_MODULATION_SAMPLE_RATE
-                //         / FmRadioSim::RATIO_FS_INTER_FS,
-                // ),
+                0 => draw_chart(
+                    builder,
+                    labels[i],
+                    &self.input_signal[0]
+                        .iter()
+                        .map(|x| *x as f64)
+                        .collect::<Vec<_>>(),
+                    AUDIO_SAMPLE_RATE,
+                ),
+                1 => draw_chart(
+                    builder,
+                    labels[i],
+                    &self.input_signal[1]
+                        .iter()
+                        .map(|x| *x as f64)
+                        .collect::<Vec<_>>(),
+                    AUDIO_SAMPLE_RATE,
+                ),
+                2 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_composite()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::COMPOSITE_SAMPLE_RATE,
+                ),
+                3 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_modulate()
+                        .iter()
+                        .take(1024)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE,
+                ),
+                4 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_intermediate()
+                        .iter()
+                        .take(2048)
+                        .copied()
+                        .collect::<Vec<f64>>()
+                        .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                ),
+                5 => draw_chart(
+                    builder,
+                    labels[i],
+                    self.fm_radio_sim
+                        .get_demodulate(),
+                        // .iter()
+                        // // .take(2048)
+                        // .copied()
+                        // .collect::<Vec<f64>>()
+                        // .as_slice(),
+                    FmRadioSim::FM_MODULATION_SAMPLE_RATE
+                        / FmRadioSim::RATIO_FS_INTER_FS,
+                ),
                 6 => draw_chart(
                     builder,
                     labels[i],
