@@ -236,7 +236,7 @@ impl Plugin for FmSim {
         // }
 
         if self.output_buffer.lock().unwrap()[1].is_empty() {
-            self.info(String::from("output buffer is empty"));
+            // self.info(String::from("output buffer is empty"));
             while !self.output_signal_wait.load(Ordering::Acquire) {
                 hint::spin_loop();
             }
@@ -279,7 +279,7 @@ impl Plugin for FmSim {
             buf[1].set_len(4);
         }
         // self.re_init(buffer_config.sample_rate as f64, FmRadio::DEFAULT_BUF_SIZE);
-        self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
+        // self.info(format!("Initialized: fs: {}", buffer_config.sample_rate));
         {
             let input_buffer = Arc::clone(&self.input_buffer);
             let output_buffer = Arc::clone(&self.output_buffer);
@@ -367,18 +367,18 @@ impl Plugin for FmSim {
             });
             self.handle = Some(handle);
         }
-        self.info("Initialized end".to_string());
+        // self.info("Initialized end".to_string());
         true
     }
     // This can be used for cleaning up special resources like socket connections whenever the
     // plugin is deactivated. Most plugins won't need to do anything here.
     fn deactivate(&mut self) {
-        self.info("call deactivate".to_string());
-        let _ = self.msg_sender.as_ref().unwrap().send(0);
+        // self.info("call deactivate".to_string());
+        // let _ = self.msg_sender.as_ref().unwrap().send(0);
         // if let Some(handle) = &self.handle {
         //     // handle.close();
         // }
-        *self.socket.lock().unwrap() = None;
+        // *self.socket.lock().unwrap() = None;
     }
 }
 
